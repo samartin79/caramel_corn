@@ -47,23 +47,54 @@ agent.ts
 
 The file must be directly runnable by the tournament harness. No extra source tree is required.
 
-### Dependency policy
-- **No external runtime dependencies** are allowed by default.
-- Use the Node.js standard library only.
-- You may bundle or transpile locally, but the submitted repo/artifact must remain small and self-contained.
-- Recommended size cap: **10 MB zipped** total repository size.
+## Runtime contract
+
+Submissions are executed with:
+
+```bash
+node agent.ts < input.fen
+```
+
+Assume a pinned Node.js runtime supplied by the organizer. Do not assume `tsx`, `ts-node`, `npm install`, or any network/package download step is available during judging.
+
+## Hard submission constraints
+
+These are part of the competition rules, not just recommendations:
+
+- **Single entrypoint:** `agent.ts` at repository root
+- **No external runtime dependencies:** Node.js standard library only
+- **Max zipped submission size:** `10 MB`
+- **Max uncompressed submission size:** `25 MB`
+- **No network access**
+- **No reading files outside the submission root**
+- **No background daemons, subprocesses, worker pools, or child processes**
+- **No self-modifying code or runtime downloads**
+- **Determinism required:** identical FEN input must produce identical stdout output
+- **Memory cap:** target submissions must fit within a `256 MB` memory limit
+
+## Precomputed data policy
+
+To keep the challenge fair and lightweight:
+
+- Small handcrafted heuristics are allowed.
+- Large opening books are **not allowed**.
+- Endgame tablebases are **not allowed**.
+- Large precomputed lookup tables / generated position databases are **not allowed**.
+- In general, bundled precomputed data must remain clearly incidental to the code and still fit comfortably inside the submission size limits.
+
+A strong handwritten or bundled engine is allowed, but competitors should win on search/evaluation quality rather than on shipping large offline knowledge assets.
 
 ## Time limits
 
 The event is optimized for a full round robin that should finish in roughly 30 minutes.
 
-Recommended defaults:
+Tournament defaults:
 - **Think time per move:** `250 ms`
 - **Hard per-move timeout:** `1000 ms`
-- **Total compute budget per submission:** `25 minutes`
+- **Total compute budget per submission per game:** `30 s`
 
 If a submission exceeds the hard timeout, it loses that move.
-If it exceeds the total budget, remaining games may be forfeited or capped by the admin harness.
+If it exceeds the total budget, the current game is forfeited.
 
 ## Game rules
 
@@ -78,16 +109,21 @@ Edge cases:
 - **Threefold repetition:** draw
 - **50-move rule:** draw
 - **Insufficient material:** draw
-- **Resignation:** loss
 
-Initial implementation should use standard chess only. If the event proves too easy, the rules can be tightened later.
+## Fairness note
+
+Can someone embed the whole chess decision tree?
+
+No — not for real full chess. The full game tree is far too large.
+
+The actual unfair-advantage risk is different: competitors can gain leverage by packaging large precomputed assets, giant books/tablebases, or unusually heavyweight generated engines. The rules above are intended to close that gap.
 
 ## Sample agent
 
 This repo includes a sample TypeScript agent that:
 1. parses the FEN position
-2. generates all legal moves
-3. picks one at random
+2. generates legal moves
+3. picks one move deterministically
 4. prints exactly one UCI move
 
 That is the starting point challengers will fork and improve.
@@ -99,18 +135,4 @@ agent.ts
 README.md
 ```
 
-Optional local files such as `package.json` or a build config may exist, but the judge should only require the runnable entry point.
-
-## Example invocation
-
-```bash
-node agent.js < input.fen
-```
-
-or, if TypeScript execution is wired directly:
-
-```bash
-npx tsx agent.ts < input.fen
-```
-
-The harness should document the exact runtime it uses.
+Optional local files such as `package.json` or `tsconfig.json` may exist, but the judge should only require the runnable entry point.
