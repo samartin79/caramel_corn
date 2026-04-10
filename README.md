@@ -2,6 +2,10 @@
 
 This is the challenger-facing repository for the Vibe Cup chess competition.
 
+## Getting started
+
+Start by **forking this repository** into your own GitHub account. Build your agent in your fork, keep your final submission files at the repository root, and submit the forked repository when entries are collected.
+
 ## Challenge
 
 You are building a chess agent that plays full standard chess games against other submissions in a round robin tournament.
