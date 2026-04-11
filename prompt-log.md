@@ -52,3 +52,28 @@ Chronological record of all prompts/instructions given during development.
 > 9. Commit: feat: add piece-square evaluation with mirrored black indexing.
 >
 > Return only: test result, changed files, commit SHA.
+
+## 5. Alpha-beta search core
+
+> Work in /mnt/llmstore/comp/vibe-code-cup-challenge1 only.
+>
+> Milestone: deterministic alpha-beta core
+>
+> 1. Edit only agent.js.
+> 2. Keep parser + legal move generator logic unchanged.
+> 3. Implement negamax with alpha-beta pruning:
+>    - depth-limited search
+>    - terminal handling for no legal moves:
+>      - in check => mate score (-MATE + ply)
+>      - not in check => stalemate score (0)
+>    - deterministic tie-break at root: lexicographically smallest UCI on equal score
+> 4. Use current eval (material + PST) at leaf nodes.
+> 5. Add safe legal fallback move if time/logic exits unexpectedly.
+> 6. No randomness, no banned APIs.
+> 7. Run npm test; if failing, stop and fix before further work.
+> 8. Determinism check: run same FEN 5 times and confirm identical output.
+> 9. Append this user prompt + this execution prompt to prompt-log.md.
+> 10. Mirror those prompt entries and tool usage in submission-report.md.
+> 11. Commit: feat: add deterministic alpha-beta search core.
+>
+> Return only: test result, determinism check result, changed files, commit SHA.
