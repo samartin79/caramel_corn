@@ -106,7 +106,6 @@ These are part of the competition rules, not just recommendations:
 - **No reading files outside the submission root**
 - **No background daemons, subprocesses, worker pools, or child processes**
 - **No self-modifying code or runtime downloads**
-- **Determinism required:** identical FEN input must produce identical stdout output
 - **Memory cap:** target submissions must fit within a `256 MB` memory limit
 - **Think time per move:** target `250 ms`
 - **Hard per-move timeout:** `1000 ms`; exceeding it loses that move
