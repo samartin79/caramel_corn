@@ -28,6 +28,7 @@ Chronological record of all prompts given during development. See `prompt-log.md
 15. **Timing headroom fix** — Tightened to 60ms soft / 400ms hard after audit showed 269-338ms peaks on non-book positions. Improved timing headroom; typical tested positions well below hard cap, though some complex positions may still exceed 250ms target. File size metadata updated.
 16. **PV-first and killer move ordering** — PV move from previous depth searched first at root. 2-slot killer heuristic per ply recorded on quiet beta cutoffs. Killers prioritized below captures/promotions, above other quiets. No timing regression (Italian avg 179ms, Sicilian avg 156ms, Castling avg 101ms).
 17. **Transposition table** — Bounded 50k-entry TT with FNV-1a position hash. Stores depth/score/bound/bestMoveUci. Depth-preferred replace, FIFO eviction at cap. TT best move gets highest ordering priority. No timing regression (Italian avg 180ms, Sicilian avg 156ms, Castling avg 102ms).
+18. **Final hardening freeze** — 10x test pass, 20x determinism on 3 FENs, 20x timing on 4 FENs (all max < 200ms, well under 1000ms hard cap). Full compliance and structure verification.
 
 ## Tools used
 

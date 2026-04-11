@@ -300,3 +300,30 @@ Chronological record of all prompts/instructions given during development.
 > 8. Push: git push origin main.
 >
 > Return only: 5x test summary, determinism summaries, timing summaries, changed files, commit SHA.
+
+## 18. Final hardening freeze
+
+> Work in /mnt/llmstore/comp/vibe-code-cup-challenge1 only.
+>
+> Final hardening freeze (no new features):
+>
+> 1. Do not change engine logic unless fixing a verified bug.
+> 2. Run npm test 10 times; all must pass.
+> 3. Determinism checks: start FEN x20, book FEN x20, non-book FEN x20.
+> 4. Runtime checks (20 runs each) on 4 FENs. Report avg/min/max, confirm all max < 1000ms.
+> 5. Compliance scan: no banned APIs, no non-stdlib imports.
+> 6. Submission structure: one root source file, submission-report.md present, size < 1MB.
+> 7. Update prompt-log.md and submission-report.md with exact measured numbers.
+> 8. Commit: chore: final hardening verification before deadline.
+> 9. Push: git push origin main.
+>
+> Results:
+> - 10x tests: all pass
+> - Determinism: start FEN d2d4 x20, book FEN d7d5 x20, Italian b1c3 x20
+> - Timing (avg/min/max ms):
+>   - Start FEN: 24/21/32 (book hit, instant)
+>   - Italian: 179/172/197
+>   - Sicilian: 155/102/167
+>   - Castling: 102/97/109
+> - Compliance: no banned APIs, no external imports
+> - Structure: agent.js only (27,277 bytes), submission-report.md present
