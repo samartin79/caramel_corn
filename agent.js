@@ -357,26 +357,50 @@ function moveToUci(move) {
   return `${move.from}${move.to}${move.promotion || ''}`;
 }
 
-// Deterministic hash used to pick a move without randomness. Determinism matters
-// because the same FEN input must always produce the same output.
-function hashString(input) {
-  let hash = 2166136261;
-  for (let i = 0; i < input.length; i++) {
-    hash ^= input.charCodeAt(i);
-    hash = Math.imul(hash, 16777619);
+const PIECE_VALUES = {
+  p: 100,
+  n: 320,
+  b: 330,
+  r: 500,
+  q: 900,
+  k: 20000,
+};
+
+function evaluateMaterial(pos) {
+  let score = 0;
+  for (let i = 0; i < 64; i++) {
+    const piece = pos.board[i];
+    if (piece === '.') continue;
+    const value = PIECE_VALUES[piece.toLowerCase()];
+    score += colorOf(piece) === 'w' ? value : -value;
   }
-  return hash >>> 0;
+  return score;
 }
 
-// This sample agent is intentionally simple: generate every legal move, derive
-// a stable key from the position, and choose one legal move based on the hash.
-// Participants can replace this with stronger evaluation/search logic.
+function evaluateForSide(pos, side) {
+  const whitePerspective = evaluateMaterial(pos);
+  return side === 'w' ? whitePerspective : -whitePerspective;
+}
+
+// Deterministic one-ply move selection based on material score.
 function pickMove(pos) {
   const legal = legalMoves(pos);
   if (!legal.length) return null;
-  const key = `${pos.side}:${pos.board.join('')}:${pos.castling}:${pos.enPassant}`;
-  const start = hashString(key) % legal.length;
-  return legal[start];
+
+  const ordered = legal.slice().sort((a, b) => moveToUci(a).localeCompare(moveToUci(b)));
+  let bestMove = ordered[0];
+  let bestScore = -Infinity;
+
+  for (const move of ordered) {
+    const next = applyMove(pos, move);
+    const score = evaluateForSide(next, pos.side);
+    if (score > bestScore) {
+      bestScore = score;
+      bestMove = move;
+    }
+  }
+
+  return bestMove;
 }
 
 // The judge sends exactly one FEN on stdin. The agent prints exactly one UCI
