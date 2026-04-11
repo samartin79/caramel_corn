@@ -1,5 +1,3 @@
-import { readFileSync } from 'node:fs';
-
 // Files on a chess board are the columns a through h. This string lets us
 // convert back and forth between algebraic squares like "e4" and numeric
 // indexes in the 64-element board array used below.
@@ -393,7 +391,10 @@ function pickMove(pos) {
 
 // The judge sends exactly one FEN on stdin. The agent prints exactly one UCI
 // move on stdout. If there are no legal moves, print 0000 as a safe placeholder.
-const fen = readFileSync(0, 'utf8').trim();
+let fen = '';
+process.stdin.setEncoding('utf8');
+for await (const chunk of process.stdin) fen += chunk;
+fen = fen.trim();
 const pos = parseFen(fen);
 const move = pickMove(pos);
 process.stdout.write(`${move ? moveToUci(move) : '0000'}\n`);
