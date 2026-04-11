@@ -479,6 +479,38 @@ function orderMoves(pos, moves) {
   return scored;
 }
 
+// Capture-only quiescence search. Resolves tactical sequences at leaf
+// nodes so the static eval isn't applied in the middle of an exchange.
+function quiescence(pos, alpha, beta, ply, deadline) {
+  if (Date.now() >= deadline) return ABORT;
+  const standPat = evaluate(pos) * (pos.side === 'w' ? 1 : -1);
+  if (standPat >= beta) return beta;
+  if (standPat > alpha) alpha = standPat;
+
+  const legal = legalMoves(pos);
+  if (!legal.length) {
+    return isKingInCheck(pos, pos.side) ? -(MATE - ply) : 0;
+  }
+
+  // Filter to captures only (piece on target square, or en passant).
+  const captures = legal.filter((m) => {
+    if (pos.board[squareToIndex(m.to)] !== '.') return true;
+    if (m.to === pos.enPassant && pos.board[squareToIndex(m.from)].toLowerCase() === 'p') return true;
+    return false;
+  });
+
+  // Order captures by MVV-LVA with stable UCI tie-break.
+  const ordered = orderMoves(pos, captures);
+  for (const { move } of ordered) {
+    const raw = quiescence(applyMove(pos, move), -beta, -alpha, ply + 1, deadline);
+    if (raw === ABORT) return ABORT;
+    const score = -raw;
+    if (score >= beta) return beta;
+    if (score > alpha) alpha = score;
+  }
+  return alpha;
+}
+
 // Negamax with alpha-beta pruning. Returns score from the perspective of
 // pos.side. ply tracks distance from root for mate-distance scoring.
 // Returns ABORT if hard deadline is exceeded.
@@ -489,7 +521,7 @@ function negamax(pos, depth, alpha, beta, ply, deadline) {
     return isKingInCheck(pos, pos.side) ? -(MATE - ply) : 0;
   }
   if (depth <= 0) {
-    return evaluate(pos) * (pos.side === 'w' ? 1 : -1);
+    return quiescence(pos, alpha, beta, ply, deadline);
   }
   const ordered = orderMoves(pos, legal);
   for (const { move } of ordered) {

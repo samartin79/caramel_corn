@@ -5,7 +5,7 @@
 - **Participant / team name:** samartin79
 - **Final source file:** `agent.js`
 - **Model(s) / system(s) used:** Claude Code (Claude Opus 4.6)
-- **Short strategy summary:** Iterative-deepening negamax alpha-beta with material + PST evaluation, MVV-LVA move ordering, soft/hard time control (200ms/800ms), and deterministic lexicographic UCI tie-break. No randomness, no external dependencies.
+- **Short strategy summary:** Iterative-deepening negamax alpha-beta with capture-only quiescence, material + PST evaluation, MVV-LVA move ordering, soft/hard time control (200ms/800ms), and deterministic lexicographic UCI tie-break. No randomness, no external dependencies.
 
 ## Prompt log
 
@@ -21,6 +21,7 @@ Chronological record of all prompts given during development. See `prompt-log.md
 8. **Patch iterative deepening completion semantics** — ABORT at any root move discards entire depth (no partial results). Hard-deadline guard before starting each new depth. Only fully completed depths update bestMove.
 9. **Deterministic move ordering** — MVV-LVA captures first, then checks, then quiet moves. Stable UCI lex tie-break within each bucket. Applied at both root and recursive levels.
 10. **Hardening freeze** — 5x test pass, 10x determinism check, legality sweep on 8 diverse FENs, compliance audit, final submission report.
+11. **Quiescence search** — Capture-only quiescence at leaf nodes. Stand-pat eval, alpha/beta pruning, en passant captures included. MVV-LVA ordering with stable UCI tie-break. ABORT propagation preserved.
 
 ## Tools used
 
@@ -51,7 +52,7 @@ Chronological record of all prompts given during development. See `prompt-log.md
 
 ## Cut decisions
 
-- **Quiescence search** — skipped; would improve tactical accuracy but adds complexity and risk within time budget.
+- **Quiescence search** — implemented (capture-only).
 - **Opening book** — skipped; deterministic hash-based or hardcoded openings considered but not needed for core strength.
 - **Transposition table** — skipped; would speed search but adds memory management complexity.
 - **Killer/history heuristics** — skipped; MVV-LVA + check ordering provides sufficient pruning improvement.

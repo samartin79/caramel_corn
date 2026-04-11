@@ -186,3 +186,24 @@ Chronological record of all prompts/instructions given during development.
 > 9. Push: git push origin main.
 >
 > Return only: 5x test results summary, determinism 10x result, compliance check summary, changed files, commit SHA.
+
+## 11. Quiescence search (captures only)
+
+> Work in /mnt/llmstore/comp/vibe-code-cup-challenge1 only.
+>
+> Milestone: add quiescence search (captures only)
+>
+> 1. Edit only agent.js.
+> 2. Keep parser + legal move generator unchanged.
+> 3. Add capture-only quiescence at leaf nodes:
+>    - In negamax, when depth <= 0, call quiescence(pos, alpha, beta, ply, deadline) instead of static eval.
+>    - quiescence must: return ABORT on hard deadline hit, compute stand-pat score, apply alpha/beta, search only legal capture moves (include en passant), be deterministic.
+> 4. Preserve existing iterative deepening timeout semantics.
+> 5. No randomness, no banned APIs/imports.
+> 6. Run npm test 5 times; all must pass.
+> 7. Run same-FEN determinism check 10x.
+> 8. Update prompt-log.md and submission-report.md.
+> 9. Commit: feat: add capture-only quiescence search.
+> 10. Push: git push origin main.
+>
+> Return only: 5x test summary, determinism 10x result, changed files, commit SHA.
