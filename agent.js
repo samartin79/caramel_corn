@@ -443,12 +443,58 @@ const SOFT_MS = 60;
 const HARD_MS = 400;
 const ABORT = Symbol('abort');
 
-// MVV-LVA move ordering. Captures scored by victim value - attacker/100.
-// Promotions get bonus. Killer quiet moves get 5000. Stable UCI lex tie-break.
-function orderMoves(pos, moves, killerUcis) {
+// Transposition table: bounded, deterministic, depth-preferred replace.
+const TT_MAX = 50000;
+const EXACT = 0;
+const LOWER = 1;
+const UPPER = 2;
+const tt = new Map();
+
+function posKey(pos) {
+  let h = 2166136261;
+  for (let i = 0; i < 64; i++) {
+    h ^= pos.board[i].charCodeAt(0);
+    h = Math.imul(h, 16777619);
+  }
+  h ^= pos.side.charCodeAt(0);
+  h = Math.imul(h, 16777619);
+  for (let i = 0; i < pos.castling.length; i++) {
+    h ^= pos.castling.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  for (let i = 0; i < pos.enPassant.length; i++) {
+    h ^= pos.enPassant.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
+function ttProbe(key, depth, alpha, beta) {
+  const entry = tt.get(key);
+  if (!entry || entry.depth < depth) return null;
+  if (entry.bound === EXACT) return { score: entry.score, bestUci: entry.bestUci };
+  if (entry.bound === LOWER && entry.score >= beta) return { score: entry.score, bestUci: entry.bestUci };
+  if (entry.bound === UPPER && entry.score <= alpha) return { score: entry.score, bestUci: entry.bestUci };
+  return { score: null, bestUci: entry.bestUci };
+}
+
+function ttStore(key, depth, score, bound, bestUci) {
+  const existing = tt.get(key);
+  if (existing && existing.depth > depth) return;
+  if (tt.size >= TT_MAX && !existing) {
+    const first = tt.keys().next().value;
+    tt.delete(first);
+  }
+  tt.set(key, { depth, score, bound, bestUci });
+}
+
+// Move ordering: TT best move > captures (MVV-LVA) > promotions > killers > quiet.
+// Stable UCI lex tie-break within each bucket.
+function orderMoves(pos, moves, killerUcis, ttBestUci) {
   const killers = killerUcis ? new Set(killerUcis) : null;
   const scored = moves.map((move) => {
     const uci = moveToUci(move);
+    if (ttBestUci && uci === ttBestUci) return { move, uci, priority: 20000 };
     const toIdx = squareToIndex(move.to);
     const victim = pos.board[toIdx];
     const fromIdx = squareToIndex(move.from);
@@ -510,7 +556,7 @@ function quiescence(pos, alpha, beta, ply, deadline) {
   });
 
   // Order captures by MVV-LVA with stable UCI tie-break.
-  const ordered = orderMoves(pos, captures);
+  const ordered = orderMoves(pos, captures, null, null);
   for (const { move } of ordered) {
     const raw = quiescence(applyMove(pos, move), -beta, -alpha, ply + 1, deadline);
     if (raw === ABORT) return ABORT;
@@ -521,9 +567,8 @@ function quiescence(pos, alpha, beta, ply, deadline) {
   return alpha;
 }
 
-// Negamax with alpha-beta pruning. Returns score from the perspective of
-// pos.side. ply tracks distance from root for mate-distance scoring.
-// Returns ABORT if hard deadline is exceeded.
+// Negamax with alpha-beta pruning and TT. Returns score from the
+// perspective of pos.side. Returns ABORT if hard deadline is exceeded.
 function negamax(pos, depth, alpha, beta, ply, deadline, killerTable) {
   if (Date.now() >= deadline) return ABORT;
   const legal = legalMoves(pos);
@@ -533,18 +578,34 @@ function negamax(pos, depth, alpha, beta, ply, deadline, killerTable) {
   if (depth <= 0) {
     return quiescence(pos, alpha, beta, ply, deadline);
   }
+
+  const key = posKey(pos);
+  let ttBestUci = null;
+  const probe = ttProbe(key, depth, alpha, beta);
+  if (probe) {
+    if (probe.score !== null) return probe.score;
+    ttBestUci = probe.bestUci;
+  }
+
+  const origAlpha = alpha;
   const killerUcis = killerTable[ply] || null;
-  const ordered = orderMoves(pos, legal, killerUcis);
+  const ordered = orderMoves(pos, legal, killerUcis, ttBestUci);
+  let bestUci = ordered[0].uci;
   for (const { move, uci } of ordered) {
     const raw = negamax(applyMove(pos, move), depth - 1, -beta, -alpha, ply + 1, deadline, killerTable);
     if (raw === ABORT) return ABORT;
     const score = -raw;
     if (score >= beta) {
       if (isQuiet(pos, move)) recordKiller(killerTable, ply, uci);
+      ttStore(key, depth, beta, LOWER, uci);
       return beta;
     }
-    if (score > alpha) alpha = score;
+    if (score > alpha) {
+      alpha = score;
+      bestUci = uci;
+    }
   }
+  ttStore(key, depth, alpha, alpha > origAlpha ? EXACT : UPPER, bestUci);
   return alpha;
 }
 
@@ -630,7 +691,7 @@ function pickMove(pos) {
   }
 
   // Order root moves: captures (MVV-LVA), killers, quiet; UCI lex tie-break.
-  const rootMoves = orderMoves(pos, legal, null);
+  const rootMoves = orderMoves(pos, legal, null, null);
 
   // Deterministic fallback: first move in ordered list.
   let bestMove = rootMoves[0].move;

@@ -278,3 +278,25 @@ Chronological record of all prompts/instructions given during development.
 > 12. Push: git push origin main.
 >
 > Return only: 5x test summary, determinism summaries (2 FENs), timing summaries (3 FENs), changed files, commit SHA.
+
+## 17. Transposition table
+
+> Work in /mnt/llmstore/comp/vibe-code-cup-challenge1 only.
+>
+> Milestone: lightweight transposition table (TT) under strict memory/time guardrails
+>
+> 1. Edit only agent.js (plus logs/report files).
+> 2. Keep parser/legal move generator unchanged. Keep time controls unchanged (SOFT_MS=60, HARD_MS=400).
+> 3. Add deterministic TT for negamax:
+>    - Key: FNV-1a hash of board + side + castling + ep.
+>    - Store: depth, score, bound type (EXACT/LOWER/UPPER), bestMoveUci.
+>    - Probe before node expansion to tighten alpha/beta or return exact.
+>    - Store after search node completes.
+>    - TT best move gets highest ordering priority (20000).
+> 4. Bounded: 50k max entries, depth-preferred replace, FIFO eviction at cap.
+> 5. Deterministic, no randomness.
+> 6. Run npm test 5x. Determinism 10x on 2 FENs. Timing 20x on 3 FENs.
+> 7. Commit: feat: add bounded deterministic transposition table.
+> 8. Push: git push origin main.
+>
+> Return only: 5x test summary, determinism summaries, timing summaries, changed files, commit SHA.

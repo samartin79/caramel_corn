@@ -27,6 +27,7 @@ Chronological record of all prompts given during development. See `prompt-log.md
 14. **Deterministic opening book** — 14-entry hardcoded book keyed by FEN core (placement/side/castling/ep). Covers d4/e4/c4/Nf3 openings through ~3 moves. Validated against legal moves before use; falls back to search if missing/illegal.
 15. **Timing headroom fix** — Tightened to 60ms soft / 400ms hard after audit showed 269-338ms peaks on non-book positions. Improved timing headroom; typical tested positions well below hard cap, though some complex positions may still exceed 250ms target. File size metadata updated.
 16. **PV-first and killer move ordering** — PV move from previous depth searched first at root. 2-slot killer heuristic per ply recorded on quiet beta cutoffs. Killers prioritized below captures/promotions, above other quiets. No timing regression (Italian avg 179ms, Sicilian avg 156ms, Castling avg 101ms).
+17. **Transposition table** — Bounded 50k-entry TT with FNV-1a position hash. Stores depth/score/bound/bestMoveUci. Depth-preferred replace, FIFO eviction at cap. TT best move gets highest ordering priority. No timing regression (Italian avg 180ms, Sicilian avg 156ms, Castling avg 102ms).
 
 ## Tools used
 
@@ -59,7 +60,7 @@ Chronological record of all prompts given during development. See `prompt-log.md
 
 - **Quiescence search** — implemented (capture-only).
 - **Opening book** — implemented (14-entry hardcoded map, d4/e4/c4/Nf3 lines through ~3 moves).
-- **Transposition table** — skipped; would speed search but adds memory management complexity.
+- **Transposition table** — implemented (50k entries, FNV-1a hash, depth-preferred replace).
 - **Killer heuristic** — implemented (2-slot per ply, quiet beta cutoffs). History heuristic skipped.
 - **Endgame-specific PST** — skipped; single PST set used for all phases.
 
