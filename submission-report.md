@@ -5,7 +5,7 @@
 - **Participant / team name:** samartin79
 - **Final source file:** `agent.js`
 - **Model(s) / system(s) used:** Claude Code (Claude Opus 4.6)
-- **Short strategy summary:** Iterative-deepening negamax alpha-beta with capture-only quiescence, material + PST evaluation, MVV-LVA move ordering, soft/hard time control (80ms/400ms), and deterministic lexicographic UCI tie-break. No randomness, no external dependencies.
+- **Short strategy summary:** Iterative-deepening negamax alpha-beta with capture-only quiescence, material + PST evaluation, MVV-LVA move ordering, soft/hard time control (150ms/600ms), and deterministic lexicographic UCI tie-break. No randomness, no external dependencies.
 
 ## Prompt log
 
@@ -23,6 +23,7 @@ Chronological record of all prompts given during development. See `prompt-log.md
 10. **Hardening freeze** — 5x test pass, 10x determinism check, legality sweep on 8 diverse FENs, compliance audit, final submission report.
 11. **Quiescence search** — Capture-only quiescence at leaf nodes. Stand-pat eval, alpha/beta pruning, en passant captures included. MVV-LVA ordering with stable UCI tie-break. ABORT propagation preserved.
 12. **Performance fix** — Removed expensive check detection from move ordering (was calling applyMove+isKingInCheck per quiet move). Tightened time controls to 80ms soft / 400ms hard. Opening position now ~200ms, midgame positions ~120ms.
+13. **Submission guardrail timing adjustment** — Committed and pushed immediately to avoid unsubmitted local drift. Set soft/hard controls to 150ms / 600ms for safer headroom under the 1000ms hard cap.
 
 ## Tools used
 
@@ -56,11 +57,11 @@ Chronological record of all prompts given during development. See `prompt-log.md
 - **Quiescence search** — implemented (capture-only).
 - **Opening book** — skipped; deterministic hash-based or hardcoded openings considered but not needed for core strength.
 - **Transposition table** — skipped; would speed search but adds memory management complexity.
-- **Killer/history heuristics** — skipped; MVV-LVA + check ordering provides sufficient pruning improvement.
+- **Killer/history heuristics** — skipped; MVV-LVA ordering provides sufficient pruning improvement.
 - **Endgame-specific PST** — skipped; single PST set used for all phases.
 
 ## Additional notes
 
 - Input reads via `process.stdin` (top-level `for await` in ESM) — no `node:fs` dependency.
-- All move ordering is deterministic: MVV-LVA priority, then check detection, with stable UCI lexicographic tie-break within each bucket.
+- All move ordering is deterministic: MVV-LVA priority with stable UCI lexicographic tie-break within each bucket.
 - Full prompt history maintained in `prompt-log.md`.

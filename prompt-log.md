@@ -217,3 +217,12 @@ Chronological record of all prompts/instructions given during development.
 > 2. Tightened time controls: SOFT_MS 200→80, HARD_MS 800→400.
 > 3. Updated file size in submission-report.md (20,894→21,769 bytes).
 > 4. Verified: opening ~200ms, midgame ~120ms, all positions under 250ms target.
+
+## 13. Submission guardrail timing adjustment
+
+> Two issues. Fix in this order:
+> 1. Commit and push NOW. Uncomitted code doesn't exist on GitHub.
+> 2. Timing — 825ms average on opening positions is dangerous.
+>    Reduce soft target from 200ms to 150ms and hard cutoff from 800ms to 600ms.
+>    Trade one ply of depth for never timing out.
+>    Fix timing FIRST, then commit, then push, then update report metadata.
