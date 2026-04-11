@@ -31,3 +31,24 @@ Chronological record of all prompts/instructions given during development.
 > 6. Run a quick banned-API scan in agent.js for: Math.random, child_process, worker_threads, eval, Function, fs.writeFile.
 > 7. Commit if green with: chore: enforce stdin-only input rule and update prompt/tool logs
 > 8. Return only: test result, banned-API scan result, changed files, commit SHA, next milestone to execute (PST integration).
+
+## 4. Piece-square tables
+
+> PROMPT 3 — Piece-Square Tables (sequential)
+>
+> Work in /mnt/llmstore/comp/vibe-code-cup-challenge1 only.
+>
+> 1. Edit only agent.js.
+> 2. Keep existing FEN parser + legal move generator unchanged.
+> 3. Add static piece-square tables for p,n,b,r,q,k and integrate into evaluation:
+>    - score = material + PST
+>    - white uses direct index
+>    - black must mirror by rank flip (mirrored = index ^ 56), not file flip
+> 4. Preserve deterministic tie-break behavior (lexicographic UCI on equal score).
+> 5. Run npm test. If failing, stop and fix before continuing.
+> 6. Append this user prompt + this execution prompt to prompt-log.md.
+> 7. Mirror prompt entries into submission-report.md chronological prompt log.
+> 8. Append tools used in this turn to tool log section (and tool-log.md if present).
+> 9. Commit: feat: add piece-square evaluation with mirrored black indexing.
+>
+> Return only: test result, changed files, commit SHA.

@@ -5,7 +5,7 @@
 - **Participant / team name:** samartin79
 - **Final source file:** `agent.js`
 - **Model(s) / system(s) used:** Claude Code (Claude Opus 4.6)
-- **Short strategy summary:** Deterministic one-ply material evaluation (P=100, N=320, B=330, R=500, Q=900, K=20000) with lexicographic UCI tie-break. No randomness.
+- **Short strategy summary:** Deterministic one-ply material + piece-square table evaluation with lexicographic UCI tie-break. No randomness.
 
 ## Prompt log
 
@@ -14,6 +14,7 @@ Chronological record of all prompts given during development. See also `prompt-l
 1. **Fork and baseline setup** — Fork repo, clone, configure remotes, pull latest, run tests, commit baseline.
 2. **Material evaluation** — Add deterministic material eval with specified piece values, lexicographic UCI tie-break. Keep parser/movegen intact.
 3. **Clean-up: stdin-only input rule and logging** — Remove `node:fs` import, switch to `process.stdin` for FEN input. Create prompt and tool logs. Run banned-API scan.
+4. **Piece-square tables** — Add static PST for all 6 piece types. Integrate as `score = material + PST`. Black mirrors via `index ^ 56` rank flip.
 
 ## Tools used
 
