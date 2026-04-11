@@ -39,7 +39,7 @@ Chronological record of all prompts given during development. See `prompt-log.md
 | ripgrep (via Grep) | Banned-API scans (Math.random, child_process, worker_threads, eval, Function, fs.writeFile, external imports) |
 | git | Version control, commits and pushes at each milestone |
 | node (direct) | Determinism checks (5x and 10x same-FEN), legality sweep on 8 diverse FENs |
-| wc | File size verification (25,396 bytes) |
+| wc | File size verification (27,277 bytes) |
 | ls | Verify single executable source file at repo root |
 
 ## Rules compliance checklist
@@ -54,7 +54,7 @@ Chronological record of all prompts given during development. See `prompt-log.md
 | The agent does not use runtime downloads or self-modifying code | Yes |
 | The same FEN input always produces the same stdout output | Yes |
 | `npm test` passes locally for the included smoke tests | Yes |
-| The source file is under `1 MB` | Yes (25,396 bytes) |
+| The source file is under `1 MB` | Yes (27,277 bytes) |
 
 ## Cut decisions
 
