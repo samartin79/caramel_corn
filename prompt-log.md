@@ -254,3 +254,27 @@ Chronological record of all prompts/instructions given during development.
 > 1. SOFT_MS 150→60, HARD_MS 600→400.
 > 2. Updated file size in submission-report.md (21,770→24,105 bytes).
 > 3. Verified: midgame 116-141ms, castling 97ms, Sicilian 155ms, Italian 175ms — all under 250ms.
+
+## 16. PV-first and killer move ordering
+
+> Work in /mnt/llmstore/comp/vibe-code-cup-challenge1 only.
+>
+> Milestone: stronger deterministic move ordering (PV-first + killer heuristic), no timing regression
+>
+> 1. Edit only agent.js (plus logs/report files).
+> 2. Keep parser/legal move generator unchanged.
+> 3. Keep time controls unchanged (SOFT_MS=60, HARD_MS=400).
+> 4. Improve ordering in a deterministic way:
+>    - PV-first at root: when iterative deepening completes a depth, search that depth's best move first at next depth.
+>    - Add killer heuristic for quiet moves in negamax: maintain killer move(s) per ply as UCI strings, on beta cutoff by quiet move record killer, in ordering give killer quiet moves priority below captures/promotions and above other quiets.
+>    - Preserve stable UCI lexicographic tie-break for equal priority.
+> 5. Do not reintroduce expensive check-detection in ordering.
+> 6. Preserve quiescence, opening book legality check, and timeout semantics.
+> 7. Run npm test 5x.
+> 8. Run determinism checks (start FEN + one non-book FEN, 10x each).
+> 9. Run timing spot checks on 3 non-book FENs (20 runs each) and report avg/min/max.
+> 10. Update prompt-log.md and submission-report.md.
+> 11. Commit: feat: add pv-first and killer move ordering.
+> 12. Push: git push origin main.
+>
+> Return only: 5x test summary, determinism summaries (2 FENs), timing summaries (3 FENs), changed files, commit SHA.

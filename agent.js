@@ -444,8 +444,9 @@ const HARD_MS = 400;
 const ABORT = Symbol('abort');
 
 // MVV-LVA move ordering. Captures scored by victim value - attacker/100.
-// Promotions get bonus. Quiet moves scored 0. Stable UCI lex tie-break.
-function orderMoves(pos, moves) {
+// Promotions get bonus. Killer quiet moves get 5000. Stable UCI lex tie-break.
+function orderMoves(pos, moves, killerUcis) {
+  const killers = killerUcis ? new Set(killerUcis) : null;
   const scored = moves.map((move) => {
     const uci = moveToUci(move);
     const toIdx = squareToIndex(move.to);
@@ -462,10 +463,30 @@ function orderMoves(pos, moves) {
     if (move.promotion) {
       priority += 9000 + PIECE_VALUES[move.promotion];
     }
+    if (priority === 0 && killers && killers.has(uci)) {
+      priority = 5000;
+    }
     return { move, uci, priority };
   });
   scored.sort((a, b) => b.priority - a.priority || (a.uci < b.uci ? -1 : a.uci > b.uci ? 1 : 0));
   return scored;
+}
+
+// Check if a move is quiet (not a capture, not en passant capture, not promotion).
+function isQuiet(pos, move) {
+  if (pos.board[squareToIndex(move.to)] !== '.') return false;
+  if (move.promotion) return false;
+  if (move.to === pos.enPassant && pos.board[squareToIndex(move.from)].toLowerCase() === 'p') return false;
+  return true;
+}
+
+// Record a killer move for the given ply (2 slots, shift on new entry).
+function recordKiller(killerTable, ply, uci) {
+  if (!killerTable[ply]) killerTable[ply] = [null, null];
+  if (killerTable[ply][0] !== uci) {
+    killerTable[ply][1] = killerTable[ply][0];
+    killerTable[ply][0] = uci;
+  }
 }
 
 // Capture-only quiescence search. Resolves tactical sequences at leaf
@@ -503,7 +524,7 @@ function quiescence(pos, alpha, beta, ply, deadline) {
 // Negamax with alpha-beta pruning. Returns score from the perspective of
 // pos.side. ply tracks distance from root for mate-distance scoring.
 // Returns ABORT if hard deadline is exceeded.
-function negamax(pos, depth, alpha, beta, ply, deadline) {
+function negamax(pos, depth, alpha, beta, ply, deadline, killerTable) {
   if (Date.now() >= deadline) return ABORT;
   const legal = legalMoves(pos);
   if (!legal.length) {
@@ -512,26 +533,29 @@ function negamax(pos, depth, alpha, beta, ply, deadline) {
   if (depth <= 0) {
     return quiescence(pos, alpha, beta, ply, deadline);
   }
-  const ordered = orderMoves(pos, legal);
-  for (const { move } of ordered) {
-    const raw = negamax(applyMove(pos, move), depth - 1, -beta, -alpha, ply + 1, deadline);
+  const killerUcis = killerTable[ply] || null;
+  const ordered = orderMoves(pos, legal, killerUcis);
+  for (const { move, uci } of ordered) {
+    const raw = negamax(applyMove(pos, move), depth - 1, -beta, -alpha, ply + 1, deadline, killerTable);
     if (raw === ABORT) return ABORT;
     const score = -raw;
-    if (score >= beta) return beta;
+    if (score >= beta) {
+      if (isQuiet(pos, move)) recordKiller(killerTable, ply, uci);
+      return beta;
+    }
     if (score > alpha) alpha = score;
   }
   return alpha;
 }
 
-// Search one depth with full-window per root move. Moves are iterated in
-// lexicographic UCI order for determinism. Returns {move, score, uci} only
-// when every root move completes; returns null on any ABORT.
-function searchDepth(pos, rootMoves, depth, deadline) {
+// Search one depth with full-window per root move. Returns {move, score, uci}
+// only when every root move completes; returns null on any ABORT.
+function searchDepth(pos, rootMoves, depth, deadline, killerTable) {
   let bestScore = -Infinity;
   let bestUci = '';
   let bestMove = null;
   for (const { move, uci } of rootMoves) {
-    const raw = negamax(applyMove(pos, move), depth - 1, -Infinity, Infinity, 1, deadline);
+    const raw = negamax(applyMove(pos, move), depth - 1, -Infinity, Infinity, 1, deadline, killerTable);
     if (raw === ABORT) return null;
     const score = -raw;
     if (score > bestScore || (score === bestScore && uci < bestUci)) {
@@ -605,20 +629,31 @@ function pickMove(pos) {
     if (bookMove) return bookMove;
   }
 
-  // Order root moves: captures (MVV-LVA), checks, quiet; UCI lex tie-break.
-  const rootMoves = orderMoves(pos, legal);
+  // Order root moves: captures (MVV-LVA), killers, quiet; UCI lex tie-break.
+  const rootMoves = orderMoves(pos, legal, null);
 
   // Deterministic fallback: first move in ordered list.
   let bestMove = rootMoves[0].move;
+  let pvUci = null;
+  const killerTable = [];
 
   const start = Date.now();
   const deadline = start + HARD_MS;
 
   for (let depth = 1; ; depth++) {
     if (Date.now() >= deadline) break;
-    const result = searchDepth(pos, rootMoves, depth, deadline);
+    // PV-first: move previous depth's best to front of root list.
+    if (pvUci) {
+      const pvIdx = rootMoves.findIndex((m) => m.uci === pvUci);
+      if (pvIdx > 0) {
+        const pv = rootMoves.splice(pvIdx, 1)[0];
+        rootMoves.unshift(pv);
+      }
+    }
+    const result = searchDepth(pos, rootMoves, depth, deadline, killerTable);
     if (!result) break;
     bestMove = result.move;
+    pvUci = result.uci;
     if (Date.now() - start >= SOFT_MS) break;
   }
   return bestMove;
