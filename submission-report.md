@@ -4,8 +4,8 @@
 
 - **Participant / team name:** samartin79
 - **Final source file:** `agent.js`
-- **Model(s) / system(s) used:** Claude Code (Claude Opus 4.6)
-- **Short strategy summary:** Iterative-deepening negamax alpha-beta with capture-only quiescence, material + PST evaluation, MVV-LVA move ordering, soft/hard time control (60ms/400ms), deterministic opening book (14 entries), and lexicographic UCI tie-break. No randomness, no external dependencies.
+- **Model(s) / system(s) used:** Claude Opus 4.6 (claude.ai), GPT-5.3 Codex (OpenAI), Claude Code (Claude Opus 4.6), GitHub CLI, Node.js test/runtime tools
+- **Short strategy summary:** Multi-agent workflow with explicit separation of concerns: Architect (Claude Opus 4.6 in claude.ai) handled prompt lock, scope, and strategy; Codex (GPT-5.3) authored runbook steps and enforced compliance/timing/determinism gates; Claude Code implemented milestone code changes. Engine strategy: iterative-deepening negamax alpha-beta with bounded deterministic transposition table, capture-only quiescence, material + PST evaluation, deterministic opening book (14 entries), and lexicographic UCI tie-break. No randomness, no external dependencies.
 
 ## Prompt log
 
@@ -30,12 +30,17 @@ Chronological record of all prompts given during development. See `prompt-log.md
 17. **Transposition table** — Bounded 50k-entry TT with FNV-1a position hash. Stores depth/score/bound/bestMoveUci. Depth-preferred replace, FIFO eviction at cap. TT best move gets highest ordering priority. No timing regression (Italian avg 180ms, Sicilian avg 156ms, Castling avg 102ms).
 18. **Final hardening freeze** — 10x test pass, 20x determinism on 3 FENs, 20x timing on 4 FENs (all max < 200ms, well under 1000ms hard cap). Full compliance and structure verification.
 19. **Closeout** — Verified file-size metadata correct (27,277 bytes). Final npm test pass. Docs synced. No engine logic changed.
+20. **Architect role prompt (claude.ai)** — “You are the Runbook Author for a 90-minute chess engine competition... Generate a sequenced runbook of implementation prompts...”
+21. **Architect submission constraints prompt (claude.ai)** — Explicit submission criteria and portal checklist: single root `agent.js`/`agent.ts`, root `submission-report.md`, stdlib-only runtime, no network/downloads/child-processes, latest pushed state is judged.
+22. **Codex review-role prompt (this thread)** — “claude will code you review” with repeated gate checks for legality, determinism, timing, and rule compliance before each next milestone.
 
 ## Tools used
 
 | Tool | How it was used |
 | --- | --- |
-| Claude Code (Opus 4.6) | All code generation, editing, testing, and compliance checks |
+| Claude Opus 4.6 (claude.ai) | Architect role: prompt lock, architectural direction, strategy decisions, constraint analysis |
+| GPT-5.3 Codex (OpenAI) | Gate reviewer and runbook author: generated sequenced implementation prompts, ran compliance/timing/determinism review gates |
+| Claude Code (Opus 4.6) | Builder role: code generation, editing, test execution, and milestone commits |
 | gh CLI | Fork verification, repo clone with auto-configured remotes |
 | npm test | Smoke test suite after each change (run 5x in hardening) |
 | ripgrep (via Grep) | Banned-API scans (Math.random, child_process, worker_threads, eval, Function, fs.writeFile, external imports) |

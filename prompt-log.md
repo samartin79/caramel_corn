@@ -332,3 +332,21 @@ Chronological record of all prompts/instructions given during development.
 
 > Final closeout checklist (no code changes to engine logic).
 > Verified file-size metadata correct (27,277 bytes). Final npm test pass. Docs synced. No engine logic changed.
+
+## 20. Architect orchestration prompt (claude.ai)
+
+> You are the Runbook Author for a 90-minute chess engine competition.
+> Generate a sequenced runbook of implementation prompts from the locked brief.
+> Build in this order: baseline -> eval -> PST -> alpha-beta -> iterative deepening/time control -> move ordering -> quiescence -> optional opening book -> hardening.
+
+## 21. Architect submission-criteria prompt (portal checklist)
+
+> Exactly one root-level agent.js or agent.ts.
+> Root-level submission-report.md with prompts and tools used.
+> Node standard library only: no installs/downloads/network/child processes.
+> Latest submitted repo state before deadline is judged.
+
+## 22. Codex review-role prompt (this thread)
+
+> claude will code you review
+> Gate every milestone for legality, determinism, timing, and rules compliance before proceeding.
