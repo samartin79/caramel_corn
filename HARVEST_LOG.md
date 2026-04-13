@@ -27,10 +27,10 @@ Ranking by ELO-per-byte at our current strength level. Order in this list is the
 | 3 | History heuristic | strength | ~200 | SHIPPED 4faa70c | src/history.js |
 | 4 | Null-move pruning | strength | ~835 | SHIPPED 16506b9 | src/search.js:270-304 |
 | 5 | LMR | strength | ~356 | SHIPPED d92394e | src/search.js:74-77,376-378 |
-| 11 | Mate-distance pruning | pruning | ~80 | pending | src/search.js:183-197 |
-| 12 | IIR | pruning | ~30 | pending | src/search.js:311,324-328 |
-| 13 | Delta pruning (qsearch) | pruning | ~40 | pending | src/qsearch.js:45 |
-| 14 | quickSee (qsearch) | pruning | ~150 | pending | src/see.js |
+| 11 | Mate-distance pruning | pruning | ~128 | SHIPPED bc184df | src/search.js:183-197 |
+| 12 | IIR | pruning | bundled | SHIPPED 0899f53 | src/search.js:311,324-328 |
+| 13 | Delta pruning (qsearch) | pruning | bundled | SHIPPED 0899f53 | src/qsearch.js:45 |
+| 14 | quickSee (qsearch) | pruning | ~620 | deferred — overflow | src/see.js |
 | 2 | Repetition detection | correctness | ~1410 | SHIPPED f52283c | src/search.js:201-202 |
 
 ## Skipped / deferred
@@ -43,6 +43,101 @@ Ranking by ELO-per-byte at our current strength level. Order in this list is the
 - **"Improving" heuristic** — adds complexity proportional to gain; defer until NMP/LMR are in
 
 ## Shipped commits (newest first)
+
+### (not shipped) — #14 quickSee attempt and revert
+
+Attempted shipping harvest item #14 (quickSee) inside `quiescence`.
+
+- **Size**: 30,164 → 30,784 (+620 bytes). **−64 bytes over the 30,720 cap.**
+- **Action**: reverted. No commit.
+- **Why the overshoot**: Lozza's quickSee is ~150 bytes in their 0x88 representation with pre-computed direction offsets and a 7-slot Uint8Array for piece values. Our flat 8×8 `pos.board` array requires explicit `tr = t >> 3, tc = t & 7` decomposition, bounds checks for the pawn-attack row, and diagonal walks on both files with explicit `tc > 0` / `tc < 7` guards. Net ~4× byte cost vs Lozza.
+- **Tightest version attempted**:
+  ```
+  function quickSee(pos, move) {
+    if (move.promotion) return 0;
+    const a = pos.board[squareToIndex(move.from)].toLowerCase();
+    if (a === 'p') return 0;
+    const t = squareToIndex(move.to);
+    const tr = t >> 3, tc = t & 7;
+    const pr = pos.side === 'w' ? tr - 1 : tr + 1;
+    if (pr < 0 || pr > 7) return 0;
+    const pc = pos.side === 'w' ? 'p' : 'P';
+    if (!((tc > 0 && pos.board[pr * 8 + tc - 1] === pc) ||
+          (tc < 7 && pos.board[pr * 8 + tc + 1] === pc))) return 0;
+    const v = pos.board[t];
+    return PIECE_VALUES[a] > (v === '.' ? 0 : PIECE_VALUES[v.toLowerCase()]) ? -1 : 0;
+  }
+  ```
+- **Paths forward** (not executed without user direction):
+  1. Byte-reclaim pass targeting `isSquareAttacked` and `pseudoLegalMoves` inline direction arrays (estimated ~150-250 byte save via hoisting), then re-apply quickSee.
+  2. Skip #14 entirely. Delta pruning already catches most losing captures in qsearch; quickSee's marginal value over delta is maybe 10-30 Elo.
+  3. Accept the byte cost via a more aggressive reclaim like combining `stripCastling`/`normalizeCastling` and inlining `hasPiece`.
+
+### 0899f53 — feat: add IIR and delta pruning in qsearch
+
+Bundles harvest items #12 (Internal Iterative Reductions) and #13 (Delta pruning in qsearch) — both small, both localized.
+
+- **Date**: 2026-04-13
+- **Bytes**: agent.js +234 (29,930 → 30,164). Headroom 556.
+- **Tests**: npm test green. Tactical probes pass (mate-in-1 1290ms, free-queen 822ms).
+
+#### #12 IIR
+
+Inside `negamax`, after the TT probe:
+```
+if (!ttBestUci && depth > 3) depth -= 1;
+```
+
+Rationale: a node without a TT best-move has poor move ordering. Reducing depth lets the engine spend saved time on nodes with proven move orderings (those that came back from the TT with a hint). Cheap speedup for under-explored regions.
+
+Safe: `depth > 3` gate ensures new `depth >= 3`. No interaction with move loop or pruning gates other than working with the smaller depth.
+
+#### #13 Delta pruning
+
+Inside qsearch move loop, before the recursive call:
+```
+const victim = pos.board[squareToIndex(move.to)];
+if (victim !== '.' && !move.promotion && alpha > -MINMATE
+    && standPat + 200 + PIECE_VALUES[victim.toLowerCase()] < alpha)
+  continue;
+```
+
+Skips captures whose best-case outcome (grab victim even for free) can't lift alpha. 200cp margin accounts for static eval uncertainty.
+
+Gates:
+- Only non-promotion captures (promotions have their own material swing)
+- `alpha > -MINMATE` (don't prune in mate-bound regions)
+- `victim !== '.'` skips en passant (which has empty destination); pawn-takes-pawn via ep is within margin anyway.
+
+#### Timing (3-run median)
+
+| Position | Pre | Post |
+|----------|----:|-----:|
+| 45-Kiwipete | 5.75s | 5.61s |
+| 41 Italian | 2.31s | 2.30s |
+| 21 rook eg | 2.34s | 2.39s |
+
+45-case faster (IIR letting budget flow to productive lines). All under hard caps.
+
+### bc184df — feat: add mate-distance pruning
+
+Harvest item #11. At the top of `negamax` (after repetition check, before TT probe):
+
+```
+if (MATE - ply < beta) beta = MATE - ply;
+if (-MATE + ply > alpha) alpha = -MATE + ply;
+if (alpha >= beta) return alpha;
+```
+
+- **Date**: 2026-04-13
+- **Bytes**: agent.js +128 (29,802 → 29,930). Headroom 790.
+- **Tests**: npm test green. Tactical probes pass.
+
+Three-line form simplified from Lozza's two-branch version. Returns `alpha` (already bounded) when the caller's bounds collapse against the mate envelope.
+
+Paired with `b6581ec` (mate-score TT ply shift). MDP cuts useless exploration in won/lost positions; the shift fix ensures cached scores stay correct across transpositions. Together they make mate handling coherent end-to-end.
+
+Timing stable (45=5.75s, 41=2.31s, 21=2.34s).
 
 ### d92394e — feat: late-move reductions
 
