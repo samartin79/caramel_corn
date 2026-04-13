@@ -56,6 +56,14 @@ const cases = [
   },
 ];
 
+const exactCases = [
+  {
+    name: 'prefer queen promotion in winning capture sequence',
+    fen: '1rbqkbnr/pPpppppp/8/8/8/8/PPP1PPPP/RNBQKBNR w KQk - 1 5',
+    expected: 'b7c8q',
+  },
+];
+
 function runAgent(fen) {
   const raw = execFileSync('node', [agentPath], {
     input: `${fen}\n`,
@@ -104,6 +112,18 @@ function loadWorkerMakeMove() {
   );
 }
 
+function loadLegalMoveHelper() {
+  const source = readFileSync(agentPath, 'utf8');
+  const sandbox = {
+    console: { log() {}, error() {}, warn() {} },
+    Date,
+  };
+  sandbox.globalThis = sandbox;
+  vm.createContext(sandbox);
+  vm.runInContext(source, sandbox, { filename: agentPath });
+  return (fen) => sandbox.legalMoves(sandbox.parseFen(fen)).map(sandbox.moveToUci);
+}
+
 function uciToMove(uci) {
   const move = {
     from: uci.slice(0, 2),
@@ -118,8 +138,10 @@ function moveToUci(move) {
   return `${move.from}${move.to}${move.promotion || ''}`;
 }
 
+const legalMovesForFen = loadLegalMoveHelper();
+
 function createBoard(fen, legal) {
-  const verboseMoves = legal.map(uciToMove);
+  const verboseMoves = (legal || legalMovesForFen(fen)).map(uciToMove);
   return {
     moves() {
       return verboseMoves;
@@ -158,6 +180,10 @@ for (const testCase of cases) {
 
 assert.equal(runAgent(cases[0].fen), runAgent(cases[0].fen), 'Agent must be deterministic for the same FEN');
 
+for (const testCase of exactCases) {
+  assert.equal(runAgent(testCase.fen), testCase.expected, `${testCase.name}: expected exact move ${testCase.expected}`);
+}
+
 const makeMove = loadMakeMove();
 const workerMakeMove = loadWorkerMakeMove();
 
@@ -178,6 +204,11 @@ assert.deepEqual(
   'makeMove path must be deterministic for the same FEN',
 );
 
+for (const testCase of exactCases) {
+  const reported = runArenaAgent(makeMove, testCase);
+  assert.equal(reported.at(-1), testCase.expected, `${testCase.name}: expected exact makeMove result ${testCase.expected}`);
+}
+
 for (const testCase of cases) {
   const reported = runArenaAgent(workerMakeMove, testCase);
   if (testCase.legal.length === 0) {
@@ -194,5 +225,10 @@ assert.deepEqual(
   runArenaAgent(workerMakeMove, cases[0]),
   'strict worker path must be deterministic for the same FEN',
 );
+
+for (const testCase of exactCases) {
+  const reported = runArenaAgent(workerMakeMove, testCase);
+  assert.equal(reported.at(-1), testCase.expected, `${testCase.name}: expected exact worker result ${testCase.expected}`);
+}
 
 console.log('agent smoke tests ok');

@@ -312,6 +312,11 @@ function moveMatches(a, b) {
   return a.from === b.from && a.to === b.to && ap === bp;
 }
 
+function promotionTie(move) {
+  if (!move || !move.promotion) return 0;
+  return move.promotion === 'q' ? 4 : move.promotion === 'r' ? 3 : move.promotion === 'b' ? 2 : 1;
+}
+
 function pstIndex(piece, idx) {
   return piece === piece.toUpperCase() ? idx : (idx ^ 56);
 }
@@ -586,7 +591,13 @@ function searchDepth(pos, rootMoves, depth, deadline, killerTable) {
     const raw = negamax(applyMove(pos, move), depth - 1, -Infinity, Infinity, 1, deadline, killerTable);
     if (raw === ABORT) return null;
     const score = -raw;
-    if (score > bestScore || (score === bestScore && uci < bestUci)) {
+    if (
+      score > bestScore ||
+      (score === bestScore && (
+        promotionTie(move) > promotionTie(bestMove) ||
+        (promotionTie(move) === promotionTie(bestMove) && uci < bestUci)
+      ))
+    ) {
       bestScore = score;
       bestUci = uci;
       bestMove = move;
