@@ -312,6 +312,10 @@ function moveMatches(a, b) {
   return a.from === b.from && a.to === b.to && ap === bp;
 }
 
+function pstIndex(piece, idx) {
+  return piece === piece.toUpperCase() ? idx : (idx ^ 56);
+}
+
 const PIECE_VALUES = { p: 100, n: 320, b: 330, r: 500, q: 900, k: 20000 };
 
 const PST = {
@@ -379,15 +383,32 @@ const PST = {
 
 function evaluate(pos) {
   let score = 0;
+  let whiteBishops = 0, blackBishops = 0;
+  const whitePawns = [0, 0, 0, 0, 0, 0, 0, 0];
+  const blackPawns = [0, 0, 0, 0, 0, 0, 0, 0];
   for (let i = 0; i < 64; i++) {
     const piece = pos.board[i];
     if (piece === '.') continue;
     const lower = piece.toLowerCase();
     const white = colorOf(piece) === 'w';
-    const idx = white ? i : (i ^ 56);
+    const idx = pstIndex(piece, i);
     const value = PIECE_VALUES[lower] + PST[lower][idx];
+    if (lower === 'p') {
+      (white ? whitePawns : blackPawns)[i & 7]++;
+    } else if (lower === 'b') {
+      if (white) whiteBishops++;
+      else blackBishops++;
+    }
     score += white ? value : -value;
   }
+  for (let file = 0; file < 8; file++) {
+    if (whitePawns[file] > 1) score -= 12 * (whitePawns[file] - 1);
+    if (blackPawns[file] > 1) score += 12 * (blackPawns[file] - 1);
+    if (whitePawns[file] && !(file && whitePawns[file - 1]) && !(file < 7 && whitePawns[file + 1])) score -= 9 * whitePawns[file];
+    if (blackPawns[file] && !(file && blackPawns[file - 1]) && !(file < 7 && blackPawns[file + 1])) score += 9 * blackPawns[file];
+  }
+  if (whiteBishops > 1) score += 28;
+  if (blackBishops > 1) score -= 28;
   return score;
 }
 
@@ -450,18 +471,23 @@ function orderMoves(pos, moves, killerUcis, ttBestUci) {
     const victim = pos.board[toIdx];
     const fromIdx = squareToIndex(move.from);
     const attacker = pos.board[fromIdx];
+    const lower = attacker.toLowerCase();
     let priority = 0;
     if (victim !== '.') {
-      priority = 10000 + PIECE_VALUES[victim.toLowerCase()] - PIECE_VALUES[attacker.toLowerCase()] / 100;
+      priority = 10000 + PIECE_VALUES[victim.toLowerCase()] - PIECE_VALUES[lower] / 100;
     }
-    if (attacker.toLowerCase() === 'p' && move.to === pos.enPassant) {
+    if (lower === 'p' && move.to === pos.enPassant) {
       priority = 10000 + PIECE_VALUES.p;
     }
     if (move.promotion) {
       priority += 9000 + PIECE_VALUES[move.promotion];
     }
-    if (priority === 0 && killers && killers.has(uci)) {
-      priority = 5000;
+    if (killers && killers.has(uci)) {
+      priority += 5000;
+    }
+    if (priority < 10000) {
+      priority += (PST[lower][pstIndex(attacker, toIdx)] - PST[lower][pstIndex(attacker, fromIdx)]) * 2;
+      if (lower === 'k' && Math.abs(toIdx - fromIdx) === 2) priority += 120;
     }
     return { move, uci, priority };
   });
@@ -628,7 +654,7 @@ function pickMove(pos, timing = LOCAL_TIMING) {
 
   for (let depth = 1; ; depth++) {
     const elapsed = Date.now() - start;
-    if (elapsed >= deadline - start || elapsed >= softMs || (lastIterMs && elapsed + lastIterMs * 2 >= softMs)) break;
+    if (elapsed >= deadline - start || elapsed >= softMs || (lastIterMs && elapsed + Math.floor(lastIterMs * 5 / 2) >= softMs)) break;
     if (pvUci) {
       const pvIdx = rootMoves.findIndex((m) => m.uci === pvUci);
       if (pvIdx > 0) {
