@@ -20,10 +20,10 @@ Ranking by ELO-per-byte at our current strength level. Order in this list is the
 |---|------|------|-------|--------|--------------|
 | 1 | Mate-score TT ply shift | correctness | ~225 | SHIPPED b6581ec | src/tt.js:55-59,107-111 |
 | 6 | Staged good/even/bad captures | ordering | ~200 | SHIPPED dc83eab | src/iterate.js:205-263 |
-| 7 | Check extensions | strength | bundled | SHIPPED (next) | src/search.js:70-72,372-374 |
-| 8 | Reverse futility | pruning | bundled | SHIPPED (next) | src/search.js:252-253 |
-| 9 | Futility (frontier) | pruning | bundled | SHIPPED (next) | src/search.js:342-343 |
-| 10 | Late-move pruning | pruning | bundled | SHIPPED (next) | src/search.js:339-340 |
+| 7 | Check extensions | strength | bundled | SHIPPED 34bc5f4 | src/search.js:70-72,372-374 |
+| 8 | Reverse futility | pruning | bundled | SHIPPED 34bc5f4 | src/search.js:252-253 |
+| 9 | Futility (frontier) | pruning | bundled | SHIPPED 34bc5f4 | src/search.js:342-343 |
+| 10 | Late-move pruning | pruning | bundled | SHIPPED 34bc5f4 | src/search.js:339-340 |
 | 3 | History heuristic | strength | ~200 | SHIPPED 4faa70c | src/history.js |
 | 4 | Null-move pruning | strength | ~200 | pending | src/search.js:270-304 |
 | 5 | LMR | strength | ~150 | pending | src/search.js:74-77,376-378 |
@@ -44,7 +44,7 @@ Ranking by ELO-per-byte at our current strength level. Order in this list is the
 
 ## Shipped commits (newest first)
 
-### (this commit) — feat: bundle check ext + reverse futility + futility + LMP
+### 34bc5f4 — feat: bundle check ext + reverse futility + futility + LMP
 
 Single bundled search-shape pass, shipping items #7, #8, #9, #10 from the harvest plan.
 
