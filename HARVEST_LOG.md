@@ -18,7 +18,7 @@ Ranking by ELO-per-byte at our current strength level. Order in this list is the
 
 | # | Item | Type | Bytes | Status | Lozza source |
 |---|------|------|-------|--------|--------------|
-| 1 | Mate-score TT ply shift | correctness | ~225 | SHIPPED (next) | src/tt.js:55-59,107-111 |
+| 1 | Mate-score TT ply shift | correctness | ~225 | SHIPPED b6581ec | src/tt.js:55-59,107-111 |
 | 6 | Staged good/even/bad captures | ordering | ~200 | SHIPPED dc83eab | src/iterate.js:205-263 |
 | 7 | Check extensions | strength | ~30 | pending | src/search.js:70-72,372-374 |
 | 8 | Reverse futility | pruning | ~50 | pending | src/search.js:252-253 |
@@ -44,7 +44,7 @@ Ranking by ELO-per-byte at our current strength level. Order in this list is the
 
 ## Shipped commits (newest first)
 
-### (this commit) — fix: ply-shift mate scores in transposition table
+### b6581ec — fix: ply-shift mate scores in transposition table
 - **Date**: 2026-04-12
 - **Bytes**: agent.js +224 (27,305 → 27,529). Headroom 3,191 bytes.
 - **Tests**: npm test green; mate-in-1 probe (Qg7# from `6k1/8/6KQ/8/8/8/8/8 w - - 0 1`) found correctly via both stdin and makeMove paths.
