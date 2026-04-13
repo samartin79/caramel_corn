@@ -428,6 +428,7 @@ const EXACT = 0;
 const LOWER = 1;
 const UPPER = 2;
 const tt = new Map();
+const history = Object.create(null);
 
 function posKey(pos) {
   let h = 2166136261;
@@ -467,6 +468,21 @@ function ttStore(key, depth, score, bound, bestUci) {
   tt.set(key, { depth, score, bound, bestUci });
 }
 
+function historyScore(uci) {
+  return history[uci] || 0;
+}
+
+function recordHistory(uci, depth) {
+  history[uci] = Math.min(historyScore(uci) + depth * depth + depth, 8000);
+}
+
+function ageHistory() {
+  for (const uci in history) {
+    history[uci] >>= 1;
+    if (!history[uci]) delete history[uci];
+  }
+}
+
 function orderMoves(pos, moves, killerUcis, ttBestUci) {
   const killers = killerUcis ? new Set(killerUcis) : null;
   const scored = moves.map((move) => {
@@ -491,6 +507,7 @@ function orderMoves(pos, moves, killerUcis, ttBestUci) {
       priority += 5000;
     }
     if (priority < 10000) {
+      priority += historyScore(uci);
       priority += (PST[lower][pstIndex(attacker, toIdx)] - PST[lower][pstIndex(attacker, fromIdx)]) * 2;
       if (lower === 'k' && Math.abs(toIdx - fromIdx) === 2) priority += 120;
     }
@@ -570,7 +587,10 @@ function negamax(pos, depth, alpha, beta, ply, deadline, killerTable) {
     if (raw === ABORT) return ABORT;
     const score = -raw;
     if (score >= beta) {
-      if (isQuiet(pos, move)) recordKiller(killerTable, ply, uci);
+      if (isQuiet(pos, move)) {
+        recordKiller(killerTable, ply, uci);
+        recordHistory(uci, depth);
+      }
       ttStore(key, depth, beta, LOWER, uci);
       return beta;
     }
@@ -655,6 +675,7 @@ const BOOK = new Map([
 function pickMove(pos, timing = LOCAL_TIMING) {
   const legal = legalMoves(pos);
   if (!legal.length) return null;
+  ageHistory();
 
   const bk = bookKey(pos);
   const bookUci = BOOK.get(bk);
