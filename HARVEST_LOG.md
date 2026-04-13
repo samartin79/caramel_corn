@@ -44,6 +44,28 @@ Ranking by ELO-per-byte at our current strength level. Order in this list is the
 
 ## Shipped commits (newest first)
 
+### (this commit) — tune: tighten predictive-stop multiplier from 2.5 to 3.0
+
+Isolated tuning commit, no search-shape changes. Addresses the 41-case soft-budget overshoot introduced by the pruning bundle in `34bc5f4`.
+
+- **Date**: 2026-04-13
+- **Bytes**: agent.js −16 (27,987 → 27,971). Headroom 2,749 bytes.
+- **Tests**: npm test green
+- **Tactical sanity**: mate-in-1 Qg7# (980ms) and free-queen Nxb7 (1359ms) — both correctly found.
+- **What**: changed the predictive-stop expression in `pickMove`'s iterative-deepening loop from `Math.floor(lastIterMs * 5 / 2)` to `lastIterMs * 3`. Multiplier 2.5 → 3.0. The check is "if I expect the next iteration to land past the soft target, don't start it."
+- **Why**: with the pruning bundle live, per-iteration searches are faster, so the previous 2.5× heuristic was too lenient — it allowed iterations to start that then ran past the soft cap. Tightening to 3.0× makes the predictive stop more conservative about starting new iterations near the soft boundary.
+- **Why this and not arenaTiming changes**: the 41-case spike was a search-shape artifact (faster iters → more iters allowed → overshoot), not a budget-policy problem. Touching the soft ratios in `arenaTiming` would have changed the targets for all positions across all branching buckets, including positions that were behaving correctly. The predictive-stop term is the localized lever.
+
+#### Acceptance against the stated targets
+
+| Position | Pre-retune | Post-retune | Target | Result |
+|----------|-----------:|------------:|--------|--------|
+| 45-Kiwipete | 5.6s | 5.6s | ≤ ~5.6s | ✓ |
+| 41 Italian middlegame | 6.97s | 2.24s | materially below 6.97s | ✓ |
+| 21 K+R vs K endgame | 4.4s | 4.4s | not worse | ✓ |
+
+The 41-case dropped from "overshooting soft by ~800ms" to "using 36% of soft budget." This is intentional headroom — NMP and LMR are next, and they'll make per-iteration searches even faster, allowing more iterations to fit into that recovered budget without compounding the overshoot we just fixed.
+
 ### 34bc5f4 — feat: bundle check ext + reverse futility + futility + LMP
 
 Single bundled search-shape pass, shipping items #7, #8, #9, #10 from the harvest plan.

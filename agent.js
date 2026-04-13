@@ -719,7 +719,7 @@ function pickMove(pos, timing = LOCAL_TIMING) {
 
   for (let depth = 1; ; depth++) {
     const elapsed = Date.now() - start;
-    if (elapsed >= deadline - start || elapsed >= softMs || (lastIterMs && elapsed + Math.floor(lastIterMs * 5 / 2) >= softMs)) break;
+    if (elapsed >= deadline - start || elapsed >= softMs || (lastIterMs && elapsed + lastIterMs * 3 >= softMs)) break;
     if (pvUci) {
       const pvIdx = rootMoves.findIndex((m) => m.uci === pvUci);
       if (pvIdx > 0) {
