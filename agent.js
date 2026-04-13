@@ -155,6 +155,10 @@ function canCastle(pos, side, kind) {
   return true;
 }
 
+// Castling move/right tables. Index mapping: a8=0, h8=7, a1=56, h1=63.
+const CASTLE_ROOK = { g1: [61, 63], c1: [59, 56], g8: [5, 7], c8: [3, 0] };
+const CASTLE_RIGHT = { 56: 'Q', 63: 'K', 0: 'q', 7: 'k' };
+
 function applyMove(pos, move) {
   const next = {
     board: cloneBoard(pos.board),
@@ -179,18 +183,10 @@ function applyMove(pos, move) {
   }
 
   if (lower === 'k' && Math.abs(to - from) === 2) {
-    if (move.to === 'g1') {
-      next.board[squareToIndex('f1')] = next.board[squareToIndex('h1')];
-      next.board[squareToIndex('h1')] = '.';
-    } else if (move.to === 'c1') {
-      next.board[squareToIndex('d1')] = next.board[squareToIndex('a1')];
-      next.board[squareToIndex('a1')] = '.';
-    } else if (move.to === 'g8') {
-      next.board[squareToIndex('f8')] = next.board[squareToIndex('h8')];
-      next.board[squareToIndex('h8')] = '.';
-    } else if (move.to === 'c8') {
-      next.board[squareToIndex('d8')] = next.board[squareToIndex('a8')];
-      next.board[squareToIndex('a8')] = '.';
+    const rk = CASTLE_ROOK[move.to];
+    if (rk) {
+      next.board[rk[0]] = next.board[rk[1]];
+      next.board[rk[1]] = '.';
     }
   }
 
@@ -207,16 +203,12 @@ function applyMove(pos, move) {
     next.castling = next.castling.replace(pos.side === 'w' ? /[KQ]/g : /[kq]/g, '');
   }
   if (lower === 'r') {
-    if (from === squareToIndex('a1')) next.castling = next.castling.replace('Q', '');
-    if (from === squareToIndex('h1')) next.castling = next.castling.replace('K', '');
-    if (from === squareToIndex('a8')) next.castling = next.castling.replace('q', '');
-    if (from === squareToIndex('h8')) next.castling = next.castling.replace('k', '');
+    const r = CASTLE_RIGHT[from];
+    if (r) next.castling = next.castling.replace(r, '');
   }
   if (target.toLowerCase() === 'r') {
-    if (to === squareToIndex('a1')) next.castling = next.castling.replace('Q', '');
-    if (to === squareToIndex('h1')) next.castling = next.castling.replace('K', '');
-    if (to === squareToIndex('a8')) next.castling = next.castling.replace('q', '');
-    if (to === squareToIndex('h8')) next.castling = next.castling.replace('k', '');
+    const r = CASTLE_RIGHT[to];
+    if (r) next.castling = next.castling.replace(r, '');
   }
 
   next.castling = normalizeCastling(next.castling);
