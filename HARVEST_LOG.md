@@ -25,7 +25,7 @@ Ranking by ELO-per-byte at our current strength level. Order in this list is the
 | 9 | Futility (frontier) | pruning | bundled | SHIPPED 34bc5f4 | src/search.js:342-343 |
 | 10 | Late-move pruning | pruning | bundled | SHIPPED 34bc5f4 | src/search.js:339-340 |
 | 3 | History heuristic | strength | ~200 | SHIPPED 4faa70c | src/history.js |
-| 4 | Null-move pruning | strength | ~200 | pending | src/search.js:270-304 |
+| 4 | Null-move pruning | strength | ~835 | SHIPPED (next) | src/search.js:270-304 |
 | 5 | LMR | strength | ~150 | pending | src/search.js:74-77,376-378 |
 | 11 | Mate-distance pruning | pruning | ~80 | pending | src/search.js:183-197 |
 | 12 | IIR | pruning | ~30 | pending | src/search.js:311,324-328 |
@@ -43,6 +43,64 @@ Ranking by ELO-per-byte at our current strength level. Order in this list is the
 - **"Improving" heuristic** — adds complexity proportional to gain; defer until NMP/LMR are in
 
 ## Shipped commits (newest first)
+
+### (this commit) — feat: add null-move pruning
+
+Harvest item #4. First search-shape change since the predictive-stop retune in `c40c724`.
+
+- **Date**: 2026-04-13
+- **Bytes**: agent.js +835 (27,971 → 28,806). Headroom 1,914 bytes. Bigger than the ~200 byte estimate — the nullPos object literal and the `hasNonPawnMaterial` helper account for most of it.
+- **Tests**: npm test green
+- **Tactical sanity**: mate-in-1 Qg7# (967ms) and free-queen Nxb7 (1241ms) both correctly found.
+
+#### What landed
+
+**Helper**: `hasNonPawnMaterial(pos, side)` scans the board for any of the side's non-king non-pawn pieces. Used to guard against zugzwang in pawn endgames where passing turn would actually be losing.
+
+**NMP block** in `negamax`, between RFP and the move loop:
+```
+if (ev !== null && depth > 2 && beta < MINMATE && ev > beta && hasNonPawnMaterial(pos, pos.side)) {
+  // null-move position: same board, opposite side, ep cleared
+  // search at depth - 4 (R = 3) with null window (-beta, -beta+1)
+  // if score >= beta, return it (clamped to beta if > MINMATE)
+}
+```
+
+#### Gates (matches the agreed sketch)
+
+- `!inCheck` — implicit via `ev !== null` (ev is computed only when not in check)
+- `depth > 2` — NMP at depth 1-2 is rarely useful
+- `ev !== null` — needs static eval to gate on "already winning"
+- `beta < MINMATE` — don't NMP in mate-bound regions (paired with the b6581ec mate-shift fix)
+- `ev > beta` — only NMP when static eval says we're already at/above the cutoff threshold
+- `hasNonPawnMaterial(pos, pos.side)` — zugzwang guard
+
+#### Key design choices
+
+- **R = 3** as agreed.
+- **enPassant cleared** in null pos — the side that "passes" can't be subject to en passant from the previous move.
+- **board reference shared, not cloned** — negamax never mutates `pos.board`; all mutations happen in `applyMove`'s constructed `next` object. Sharing is safe and saves 64-element copy.
+- **Mate clamp on fail-high**: if the null-move search returns a score above MINMATE, we treat it as exactly `beta` instead of returning the inflated mate score. Standard precaution — null moves can produce fake mate threats if the opponent's "next" move is mate-in-1 from a position the opponent shouldn't have reached.
+- **No mate clamp on fail-low**: if the null-move search returns a very negative score (we're getting mated after passing), we just don't NMP-cutoff. Normal search resumes. Standard.
+- **Effective depth range**: NMP currently fires at depth 3-6 because `ev` is gated by `depth <= 6`. Lifting that gate would extend NMP coverage to deeper depths but adds eval cost. Deferred — tracked as a follow-up.
+
+#### Risk notes
+
+- **Successive null moves**: this implementation doesn't track "previous move was null" to prevent re-NMP at the child. Lozza doesn't either. Depth reduction (R=3) prevents infinite recursion. Compounded NMP can occasionally miss tactics; standard implementations vary on whether to guard.
+- **Endgame zugzwang beyond K+P**: the material guard catches K+pawns. K+B+P vs K+P or K+N+P vs K+P endgames where a piece move is forced by zugzwang are still at risk. Rare in practice; standard practice accepts the risk.
+- **Object-literal cost**: the nullPos `{ board, side, castling, enPassant, halfmove, fullmove }` allocates a new object per NMP firing. Could be reduced via spread (`{ ...pos, side: ..., enPassant: '-' }`) — fewer bytes, same allocation count. Deferred.
+
+#### Timing baseline (3-run median, all stable)
+
+| Position | Pre-NMP | Post-NMP | Soft cap | Hard cap |
+|----------|--------:|---------:|---------:|---------:|
+| 45-Kiwipete | 5.6s | 5.6s | 5.58s | 9.0s |
+| 41 Italian middlegame | 2.24s | 2.24s | 6.16s | 11.0s |
+| 21 K+R vs K endgame | 4.4s | 4.4s | 6.16s | 11.0s |
+
+Wall times unchanged. This is **not** "NMP did nothing" — when search is soft-cap saturated (45-Kiwipete) or predictive-stop-bounded (41-Italian, after the retune), NMP doesn't reduce wall time, it lets the engine reach more depth in the same wall time. Without node-count or depth-completed instrumentation, we don't have direct evidence NMP is firing and pruning. We're trusting the implementation here. The agreed acceptance bar (wall time + tactics + tests) is met.
+
+If we wanted real evidence in a future commit: add a `statsNmpFired` counter and a one-shot probe that prints it for a known test position.
 
 ### c40c724 — tune: tighten predictive-stop multiplier from 2.5 to 3.0
 

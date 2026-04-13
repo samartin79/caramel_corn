@@ -116,6 +116,16 @@ function isKingInCheck(pos, side) {
   return isSquareAttacked(pos, kingIdx, opposite(side));
 }
 
+function hasNonPawnMaterial(pos, side) {
+  for (let i = 0; i < 64; i++) {
+    const p = pos.board[i];
+    if (p === '.' || colorOf(p) !== side) continue;
+    const lower = p.toLowerCase();
+    if (lower !== 'p' && lower !== 'k') return true;
+  }
+  return false;
+}
+
 function hasPiece(pos, sq, piece) {
   return pos.board[squareToIndex(sq)] === piece;
 }
@@ -593,6 +603,24 @@ function negamax(pos, depth, alpha, beta, ply, deadline, killerTable) {
 
   const ev = (!inCheck && depth <= 6) ? evaluate(pos) * (pos.side === 'w' ? 1 : -1) : null;
   if (ev !== null && beta < MINMATE && ev - 100 * depth >= beta) return ev;
+
+  if (ev !== null && depth > 2 && beta < MINMATE && ev > beta && hasNonPawnMaterial(pos, pos.side)) {
+    const nullPos = {
+      board: pos.board,
+      side: opposite(pos.side),
+      castling: pos.castling,
+      enPassant: '-',
+      halfmove: pos.halfmove,
+      fullmove: pos.fullmove,
+    };
+    const raw = negamax(nullPos, depth - 4, -beta, -beta + 1, ply + 1, deadline, killerTable);
+    if (raw === ABORT) return ABORT;
+    let nullScore = -raw;
+    if (nullScore >= beta) {
+      if (nullScore > MINMATE) nullScore = beta;
+      return nullScore;
+    }
+  }
 
   const origAlpha = alpha;
   const killerUcis = killerTable[ply] || null;
