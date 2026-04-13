@@ -25,7 +25,7 @@ Ranking by ELO-per-byte at our current strength level. Order in this list is the
 | 9 | Futility (frontier) | pruning | bundled | SHIPPED 34bc5f4 | src/search.js:342-343 |
 | 10 | Late-move pruning | pruning | bundled | SHIPPED 34bc5f4 | src/search.js:339-340 |
 | 3 | History heuristic | strength | ~200 | SHIPPED 4faa70c | src/history.js |
-| 4 | Null-move pruning | strength | ~835 | SHIPPED (next) | src/search.js:270-304 |
+| 4 | Null-move pruning | strength | ~835 | SHIPPED 16506b9 | src/search.js:270-304 |
 | 5 | LMR | strength | ~150 | pending | src/search.js:74-77,376-378 |
 | 11 | Mate-distance pruning | pruning | ~80 | pending | src/search.js:183-197 |
 | 12 | IIR | pruning | ~30 | pending | src/search.js:311,324-328 |
@@ -44,7 +44,7 @@ Ranking by ELO-per-byte at our current strength level. Order in this list is the
 
 ## Shipped commits (newest first)
 
-### (this commit) — feat: add null-move pruning
+### 16506b9 — feat: add null-move pruning
 
 Harvest item #4. First search-shape change since the predictive-stop retune in `c40c724`.
 
