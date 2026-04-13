@@ -8,9 +8,9 @@ Live tracking doc for porting Lozza ideas into caramel_corn. Updated as work lan
 - **Baseline**: chess-challenge1 commit `638019c` — the build that passed live ChessArena validation against Amok on 2026-04-12
 - **Live cap**: 30,720 bytes per ChessArena bot-specs.json
 
-## Open question (not blocking caramel_corn work)
+## Validated baseline
 
-`chess-challenge1/main` has drifted past the validated build with the promotion fix `0761757` on top. To preserve the validated artifact, recommend tagging `638019c` as `validated-2026-04-12`. Awaiting decision.
+`chess-challenge1` validated artifact is preserved at tag `validated-2026-04-12-buttery_popcorn` on commit `638019c`.
 
 ## Harvest plan (ranked)
 
@@ -31,7 +31,7 @@ Ranking by ELO-per-byte at our current strength level. Order in this list is the
 | 12 | IIR | pruning | ~30 | pending | src/search.js:311,324-328 |
 | 13 | Delta pruning (qsearch) | pruning | ~40 | pending | src/qsearch.js:45 |
 | 14 | quickSee (qsearch) | pruning | ~150 | pending | src/see.js |
-| 2 | Repetition detection | correctness | ~200 | pending | src/search.js:201-202 |
+| 2 | Repetition detection | correctness | ~1410 | SHIPPED f52283c | src/search.js:201-202 |
 
 ## Skipped / deferred
 
@@ -43,6 +43,56 @@ Ranking by ELO-per-byte at our current strength level. Order in this list is the
 - **"Improving" heuristic** — adds complexity proportional to gain; defer until NMP/LMR are in
 
 ## Shipped commits (newest first)
+
+### f52283c — fix: avoid repeated live-game positions
+
+Harvest item #2. This is a live-runtime repetition fix, not just a pure search-path port.
+
+- **Date**: 2026-04-13
+- **Bytes**: agent.js +1,410 (28,806 → 30,216). Headroom 504 bytes.
+- **Tests**: npm test green
+- **Tactical sanity**: existing smoke/exact cases still pass, including the queen-promotion regression.
+
+#### What landed
+
+- Existing `posStack`-based repetition detection was tightened and reused instead of adding a second mechanism.
+- `quiescence` now recognizes repeated positions already on the current search stack and scores them as slight draw-avoidance (`-1`).
+- `negamax` keeps the same stack-based repetition guard, but now the current node is pushed before the null-move branch so NMP descendants see the full path.
+- `searchDepth` now seeds `posStack` from actual game history when available instead of only `[rootKey]`.
+- New live-game tracker:
+  - `gameHistory` stores prior position keys across repeated `makeMove(...)` calls in the same worker
+  - `rememberPosition(pos)` resets on new/non-forward game turns and appends non-duplicate positions
+  - `makeMove(...)` now passes that history into `pickMove(...)`
+- Root anti-loop preference:
+  - `searchDepth` checks whether a candidate child position already appeared in the recorded game history
+  - those moves take a `12` centipawn root penalty, plus equal-score ties still prefer non-repeating children
+
+#### Why this shape
+
+- Plain search-path repetition was not enough to break the observed rook shuffle loop.
+- The local simulator restarts the bot process every ply, so it cannot surface worker-persistent history by itself.
+- ChessArena keeps the bot loaded across moves, so the right fix is to remember actual prior positions in the worker and use that history at the root.
+
+#### Verification that matters
+
+- Fresh worker-sequence regression added in `test/agent.test.js` feeds the exact loop positions from the self-play draw:
+  - `A`: `1k1r1b1r/1pp1pppp/p1nqbn2/3p4/3P4/P1NQBN2/1PP1PPPP/1K1R1B1R w - - 0 9`
+  - `B`: `... b - - 1 9`
+  - `C`: `... w - - 2 10`
+  - `D`: `... b - - 3 10`
+  - `A'`: same position key as `A`, later in the same game
+- Acceptance in test:
+  - fresh `makeMove` sandbox no longer ends the sequence with `d1e1`
+  - fresh strict-worker `new Function` sandbox no longer ends the sequence with `d1e1`
+- Direct observed sequence under the worker-style harness:
+  - before history is established: `d1e1`, `d8e8`, `e1d1`
+  - once the loop is recorded: black switches to `h7h6`, then white switches to `h1g1`
+
+#### Important limitation
+
+- `npm run simulate:local` in `vibe-code-cup-1-simulator` still shows the old `24`-ply threefold loop.
+- That is expected with the current simulator architecture: it executes `node agent.js` fresh for every single move, so module-level history is lost between plies.
+- This means the simulator is still useful for legality and broad strength checks, but it under-models worker-persistent features like this repetition fix until we add a persistent-per-game bot runner.
 
 ### 16506b9 — feat: add null-move pruning
 
