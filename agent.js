@@ -441,6 +441,8 @@ const UPPER = 2;
 const tt = new Map();
 const history = Object.create(null);
 let posStack = [];
+let gameHistory = [];
+let gameTurn = 0;
 
 function posKey(pos) {
   let h = 2166136261;
@@ -501,6 +503,13 @@ function ageHistory() {
   }
 }
 
+function repeated(key, stack) {
+  for (let i = stack.length - 1; i >= 0; i--) {
+    if (stack[i] === key) return true;
+  }
+  return false;
+}
+
 function orderMoves(pos, moves, killerUcis, ttBestUci) {
   const killers = killerUcis ? new Set(killerUcis) : null;
   const scored = moves.map((move) => {
@@ -556,6 +565,8 @@ function recordKiller(killerTable, ply, uci) {
 
 function quiescence(pos, alpha, beta, ply, deadline) {
   if (Date.now() >= deadline) return ABORT;
+  const key = posKey(pos);
+  if (repeated(key, posStack)) return -1;
   const standPat = evaluate(pos) * (pos.side === 'w' ? 1 : -1);
   if (standPat >= beta) return beta;
   if (standPat > alpha) alpha = standPat;
@@ -571,14 +582,22 @@ function quiescence(pos, alpha, beta, ply, deadline) {
     return false;
   });
 
+  posStack.push(key);
   const ordered = orderMoves(pos, captures, null, null);
   for (const { move } of ordered) {
     const raw = quiescence(applyMove(pos, move), -beta, -alpha, ply + 1, deadline);
-    if (raw === ABORT) return ABORT;
+    if (raw === ABORT) {
+      posStack.pop();
+      return ABORT;
+    }
     const score = -raw;
-    if (score >= beta) return beta;
+    if (score >= beta) {
+      posStack.pop();
+      return beta;
+    }
     if (score > alpha) alpha = score;
   }
+  posStack.pop();
   return alpha;
 }
 
@@ -596,11 +615,7 @@ function negamax(pos, depth, alpha, beta, ply, deadline, killerTable) {
 
   const key = posKey(pos);
 
-  if (ply > 0) {
-    for (let i = posStack.length - 1; i >= 0; i--) {
-      if (posStack[i] === key) return 0;
-    }
-  }
+  if (ply > 0 && repeated(key, posStack)) return -1;
 
   let ttBestUci = null;
   const probe = ttProbe(key, depth, alpha, beta, ply);
@@ -612,6 +627,7 @@ function negamax(pos, depth, alpha, beta, ply, deadline, killerTable) {
   const ev = (!inCheck && depth <= 6) ? evaluate(pos) * (pos.side === 'w' ? 1 : -1) : null;
   if (ev !== null && beta < MINMATE && ev - 100 * depth >= beta) return ev;
 
+  posStack.push(key);
   if (ev !== null && depth > 2 && beta < MINMATE && ev > beta && hasNonPawnMaterial(pos, pos.side)) {
     const nullPos = {
       board: pos.board,
@@ -622,10 +638,14 @@ function negamax(pos, depth, alpha, beta, ply, deadline, killerTable) {
       fullmove: pos.fullmove,
     };
     const raw = negamax(nullPos, depth - 4, -beta, -beta + 1, ply + 1, deadline, killerTable);
-    if (raw === ABORT) return ABORT;
+    if (raw === ABORT) {
+      posStack.pop();
+      return ABORT;
+    }
     let nullScore = -raw;
     if (nullScore >= beta) {
       if (nullScore > MINMATE) nullScore = beta;
+      posStack.pop();
       return nullScore;
     }
   }
@@ -634,7 +654,6 @@ function negamax(pos, depth, alpha, beta, ply, deadline, killerTable) {
   const killerUcis = killerTable[ply] || null;
   const ordered = orderMoves(pos, legal, killerUcis, ttBestUci);
   let bestUci = ordered[0].uci;
-  posStack.push(key);
   for (let i = 0; i < ordered.length; i++) {
     const { move, uci } = ordered[i];
     if (i > 0 && ev !== null && alpha > -MINMATE && isQuiet(pos, move)) {
@@ -666,26 +685,38 @@ function negamax(pos, depth, alpha, beta, ply, deadline, killerTable) {
   return alpha;
 }
 
-function searchDepth(pos, rootMoves, depth, deadline, killerTable) {
+function searchDepth(pos, rootMoves, depth, deadline, killerTable, historyKeys) {
   let bestScore = -Infinity;
   let bestUci = '';
   let bestMove = null;
+  let bestRepeat = true;
+  posStack = historyKeys && historyKeys.length ? historyKeys.slice() : [posKey(pos)];
   for (const { move, uci } of rootMoves) {
-    const raw = negamax(applyMove(pos, move), depth - 1, -Infinity, Infinity, 1, deadline, killerTable);
-    if (raw === ABORT) return null;
-    const score = -raw;
+    const next = applyMove(pos, move);
+    const repeats = historyKeys ? repeated(posKey(next), historyKeys) : false;
+    const raw = negamax(next, depth - 1, -Infinity, Infinity, 1, deadline, killerTable);
+    if (raw === ABORT) {
+      posStack = [];
+      return null;
+    }
+    const score = -raw - (repeats ? 12 : 0);
     if (
       score > bestScore ||
       (score === bestScore && (
-        promotionTie(move) > promotionTie(bestMove) ||
-        (promotionTie(move) === promotionTie(bestMove) && uci < bestUci)
+        (bestRepeat && !repeats) ||
+        (bestRepeat === repeats && (
+          promotionTie(move) > promotionTie(bestMove) ||
+          (promotionTie(move) === promotionTie(bestMove) && uci < bestUci)
+        ))
       ))
     ) {
       bestScore = score;
       bestUci = uci;
       bestMove = move;
+      bestRepeat = repeats;
     }
   }
+  posStack = [];
   return { move: bestMove, score: bestScore, uci: bestUci };
 }
 
@@ -735,7 +766,7 @@ const BOOK = new Map([
   ['r1bqkbnr/1ppp1ppp/p1n5/4p3/B3P3/5N2/PPPP1PPP/RNBQK2R b KQkq -', 'g8f6'],
 ]);
 
-function pickMove(pos, timing = LOCAL_TIMING) {
+function pickMove(pos, timing = LOCAL_TIMING, historyKeys = null) {
   const legal = legalMoves(pos);
   if (!legal.length) return null;
   ageHistory();
@@ -771,7 +802,7 @@ function pickMove(pos, timing = LOCAL_TIMING) {
       }
     }
     const iterStart = Date.now();
-    const result = searchDepth(pos, rootMoves, depth, deadline, killerTable);
+    const result = searchDepth(pos, rootMoves, depth, deadline, killerTable, historyKeys);
     if (!result) break;
     bestMove = result.move;
     pvUci = result.uci;
@@ -819,6 +850,15 @@ function findLiveMove(moves, move) {
   return moves.find((candidate) => candidate && typeof candidate === 'object' && candidate.from && candidate.to && moveMatches(candidate, move)) || null;
 }
 
+function rememberPosition(pos) {
+  const turn = pos.fullmove * 2 + (pos.side === 'b');
+  if (turn <= gameTurn || (pos.fullmove === 1 && pos.side === 'w')) gameHistory = [];
+  gameTurn = turn;
+  const key = posKey(pos);
+  if (gameHistory[gameHistory.length - 1] !== key) gameHistory.push(key);
+  return gameHistory;
+}
+
 function playFen(fen, timing = LOCAL_TIMING) {
   const pos = parseFen(fen);
   const move = pickMove(pos, timing);
@@ -836,7 +876,7 @@ function makeMove(board, timeRemaining, reportMove) {
   if (!fen) return;
 
   const pos = parseFen(fen);
-  const best = pickMove(pos, arenaTiming(timeRemaining, moves.length));
+  const best = pickMove(pos, arenaTiming(timeRemaining, moves.length), rememberPosition(pos));
   if (!best) return;
 
   const matched = findLiveMove(moves, best);

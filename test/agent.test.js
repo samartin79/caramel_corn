@@ -64,6 +64,14 @@ const exactCases = [
   },
 ];
 
+const repetitionFrames = [
+  '1k1r1b1r/1pp1pppp/p1nqbn2/3p4/3P4/P1NQBN2/1PP1PPPP/1K1R1B1R w - - 0 9',
+  '1k1r1b1r/1pp1pppp/p1nqbn2/3p4/3P4/P1NQBN2/1PP1PPPP/1K2RB1R b - - 1 9',
+  '1k2rb1r/1pp1pppp/p1nqbn2/3p4/3P4/P1NQBN2/1PP1PPPP/1K2RB1R w - - 2 10',
+  '1k2rb1r/1pp1pppp/p1nqbn2/3p4/3P4/P1NQBN2/1PP1PPPP/1K1R1B1R b - - 3 10',
+  '1k1r1b1r/1pp1pppp/p1nqbn2/3p4/3P4/P1NQBN2/1PP1PPPP/1K1R1B1R w - - 4 11',
+];
+
 function runAgent(fen) {
   const raw = execFileSync('node', [agentPath], {
     input: `${fen}\n`,
@@ -169,6 +177,16 @@ function runArenaAgent(makeMove, testCase) {
   return reported.map(moveToUci);
 }
 
+function runArenaSequence(makeMove, fens) {
+  return fens.map((fen) => {
+    const reported = [];
+    makeMove(createBoard(fen), 500, (move) => {
+      reported.push(move);
+    });
+    return reported.at(-1) ? moveToUci(reported.at(-1)) : null;
+  });
+}
+
 for (const testCase of cases) {
   const move = runAgent(testCase.fen);
   if (testCase.legal.length === 0) {
@@ -230,5 +248,20 @@ for (const testCase of exactCases) {
   const reported = runArenaAgent(workerMakeMove, testCase);
   assert.equal(reported.at(-1), testCase.expected, `${testCase.name}: expected exact worker result ${testCase.expected}`);
 }
+
+const repetitionMakeMove = loadMakeMove();
+const repetitionWorkerMakeMove = loadWorkerMakeMove();
+
+assert.notEqual(
+  runArenaSequence(repetitionMakeMove, repetitionFrames).at(-1),
+  'd1e1',
+  'makeMove path should avoid walking back into a recorded repetition loop',
+);
+
+assert.notEqual(
+  runArenaSequence(repetitionWorkerMakeMove, repetitionFrames).at(-1),
+  'd1e1',
+  'strict worker path should avoid walking back into a recorded repetition loop',
+);
 
 console.log('agent smoke tests ok');
