@@ -44,7 +44,7 @@ Ranking by ELO-per-byte at our current strength level. Order in this list is the
 
 ## Shipped commits (newest first)
 
-### (this commit) — tune: tighten predictive-stop multiplier from 2.5 to 3.0
+### c40c724 — tune: tighten predictive-stop multiplier from 2.5 to 3.0
 
 Isolated tuning commit, no search-shape changes. Addresses the 41-case soft-budget overshoot introduced by the pruning bundle in `34bc5f4`.
 
