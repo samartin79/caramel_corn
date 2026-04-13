@@ -20,10 +20,10 @@ Ranking by ELO-per-byte at our current strength level. Order in this list is the
 |---|------|------|-------|--------|--------------|
 | 1 | Mate-score TT ply shift | correctness | ~225 | SHIPPED b6581ec | src/tt.js:55-59,107-111 |
 | 6 | Staged good/even/bad captures | ordering | ~200 | SHIPPED dc83eab | src/iterate.js:205-263 |
-| 7 | Check extensions | strength | ~30 | pending | src/search.js:70-72,372-374 |
-| 8 | Reverse futility | pruning | ~50 | pending | src/search.js:252-253 |
-| 9 | Futility (frontier) | pruning | ~40 | pending | src/search.js:342-343 |
-| 10 | Late-move pruning | pruning | ~40 | pending | src/search.js:339-340 |
+| 7 | Check extensions | strength | bundled | SHIPPED (next) | src/search.js:70-72,372-374 |
+| 8 | Reverse futility | pruning | bundled | SHIPPED (next) | src/search.js:252-253 |
+| 9 | Futility (frontier) | pruning | bundled | SHIPPED (next) | src/search.js:342-343 |
+| 10 | Late-move pruning | pruning | bundled | SHIPPED (next) | src/search.js:339-340 |
 | 3 | History heuristic | strength | ~200 | SHIPPED 4faa70c | src/history.js |
 | 4 | Null-move pruning | strength | ~200 | pending | src/search.js:270-304 |
 | 5 | LMR | strength | ~150 | pending | src/search.js:74-77,376-378 |
@@ -43,6 +43,61 @@ Ranking by ELO-per-byte at our current strength level. Order in this list is the
 - **"Improving" heuristic** — adds complexity proportional to gain; defer until NMP/LMR are in
 
 ## Shipped commits (newest first)
+
+### (this commit) — feat: bundle check ext + reverse futility + futility + LMP
+
+Single bundled search-shape pass, shipping items #7, #8, #9, #10 from the harvest plan.
+
+- **Date**: 2026-04-13
+- **Bytes**: agent.js +458 (27,529 → 27,987). Headroom 2,733 bytes.
+- **Tests**: npm test green
+- **Tactical sanity**: mate-in-1 Qg7# (984ms via makeMove path) and free-queen Nxb7 (1351ms) both correctly found.
+
+#### Subitems landed
+
+**#7 Check extensions**
+- `const inCheck = isKingInCheck(pos, pos.side)` is now computed once and reused for terminal mate detection AND extension
+- `if (inCheck) depth += 1;` extends one ply when side-to-move is in check, before the horizon check fires
+- Avoids quiescing out of check, which is unsound (qsearch only considers captures, can miss check-evasion quiets)
+
+**#8 Reverse futility pruning (RFP)**
+- Gated on `!inCheck && depth <= 6 && beta < MINMATE`
+- If `ev - 100 * depth >= beta`, return `ev` early
+- The `beta < MINMATE` guard prevents pruning in mate-bound regions (the point of the mate-shift fix in `b6581ec`)
+
+**#9 Futility pruning (frontier)**
+- Inside the move loop, skip quiet moves at depth ≤ 4 when `ev + 120 * depth < alpha`
+- Gated on `i > 0` so the first move is always searched (we need at least one value)
+- Gated on `alpha > -MINMATE` to avoid pruning escape-from-mate moves
+
+**#10 Late-move pruning (LMP)**
+- Inside the move loop, skip quiet moves at depth ≤ 2 past index `4 + depth * 4`
+- Same `i > 0` and `alpha > -MINMATE` gates as FP
+
+#### Shared scaffolding for the bundle
+
+- New `ev` variable: `(!inCheck && depth <= 6) ? evaluate(pos) * (pos.side === 'w' ? 1 : -1) : null`. Computed once per node, reused by RFP/FP/LMP. Returns null in branches where pruning won't fire (in check, or depth too deep) so we don't pay for evaluate when we wouldn't use the result.
+- Loop refactor: `for (const { move, uci } of ordered)` → `for (let i = 0; i < ordered.length; i++)` to expose move index for FP/LMP gates.
+
+#### Risk notes
+
+- FP/LMP can theoretically prune a quiet sacrifice that leads to mate-in-3+. The `alpha > -MINMATE` guard plus `quiet`-only filter limit this to non-mate-bound centipawn regions. Standard engine trade-off.
+- We do NOT detect "move gives check" before pruning. Lozza approximates by skipping pruning on `MOVE_NOISY_MASK` (captures + promotions). We use `isQuiet(pos, move)` which has the same effect for our move representation. A quiet check that isn't a capture/promotion can still be pruned at shallow depth — slight tactical risk, accepted for speed.
+- TT interaction with check extensions: extending depth means we probe at the higher depth. Previous entries stored at non-extended depth may not satisfy the `entry.depth >= depth` check and we'll re-search. Slightly wasteful but correct.
+
+#### Timing baseline (3-run median, all stable)
+
+| Position | Pre-bundle | Post-bundle | Soft cap | Hard cap | Notes |
+|----------|-----------:|------------:|---------:|---------:|-------|
+| 45-Kiwipete | 5.6s | 5.6s | 5.58s | 9.0s | unchanged — was already at soft |
+| 41 Italian middlegame | 3.8s | **6.97s** | 6.16s | 11.0s | now overshoots soft by ~800ms |
+| 21 K+R vs K endgame | 3.7s | 4.4s | 6.16s | 11.0s | small per-node `evaluate()` overhead |
+
+The 45-case, which was the user's stated stop condition, is **stable**.
+
+The 41-case spike (3.8s → 6.97s) is consistent with successful pruning: faster per-iteration search → predictive-stop allows one more iteration to start → that iteration lands past soft. The bot is now using budget that was previously left on the table. All within hard cap. Tactical probes pass.
+
+**Follow-up worth tracking**: the predictive stop and soft ratio were tuned in `77d20e2` against the pre-pruning behavior. With pruning live, soft is now a target we hit/overshoot rather than a ceiling we rarely approach. May want to either tighten predictive-stop multiplier (currently `lastIterMs * 2.5`) or reduce soft ratios in `arenaTiming`. Not blocking for the bundle; tracking as a tuning task.
 
 ### b6581ec — fix: ply-shift mate scores in transposition table
 - **Date**: 2026-04-12

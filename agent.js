@@ -574,9 +574,11 @@ function quiescence(pos, alpha, beta, ply, deadline) {
 function negamax(pos, depth, alpha, beta, ply, deadline, killerTable) {
   if (Date.now() >= deadline) return ABORT;
   const legal = legalMoves(pos);
+  const inCheck = isKingInCheck(pos, pos.side);
   if (!legal.length) {
-    return isKingInCheck(pos, pos.side) ? -(MATE - ply) : 0;
+    return inCheck ? -(MATE - ply) : 0;
   }
+  if (inCheck) depth += 1;
   if (depth <= 0) {
     return quiescence(pos, alpha, beta, ply, deadline);
   }
@@ -589,11 +591,19 @@ function negamax(pos, depth, alpha, beta, ply, deadline, killerTable) {
     ttBestUci = probe.bestUci;
   }
 
+  const ev = (!inCheck && depth <= 6) ? evaluate(pos) * (pos.side === 'w' ? 1 : -1) : null;
+  if (ev !== null && beta < MINMATE && ev - 100 * depth >= beta) return ev;
+
   const origAlpha = alpha;
   const killerUcis = killerTable[ply] || null;
   const ordered = orderMoves(pos, legal, killerUcis, ttBestUci);
   let bestUci = ordered[0].uci;
-  for (const { move, uci } of ordered) {
+  for (let i = 0; i < ordered.length; i++) {
+    const { move, uci } = ordered[i];
+    if (i > 0 && ev !== null && alpha > -MINMATE && isQuiet(pos, move)) {
+      if (depth <= 2 && i > 4 + depth * 4) continue;
+      if (depth <= 4 && ev + 120 * depth < alpha) continue;
+    }
     const raw = negamax(applyMove(pos, move), depth - 1, -beta, -alpha, ply + 1, deadline, killerTable);
     if (raw === ABORT) return ABORT;
     const score = -raw;
