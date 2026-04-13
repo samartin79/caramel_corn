@@ -418,6 +418,7 @@ function evaluate(pos) {
 }
 
 const MATE = 100000;
+const MINMATE = MATE - 1000;
 const ABORT = Symbol('abort');
 const LOCAL_TIMING = { softMs: 60, hardMs: 400 };
 const ARENA_BUFFER_MS = 1500;
@@ -449,23 +450,29 @@ function posKey(pos) {
   return h >>> 0;
 }
 
-function ttProbe(key, depth, alpha, beta) {
+function ttProbe(key, depth, alpha, beta, ply) {
   const entry = tt.get(key);
   if (!entry || entry.depth < depth) return null;
-  if (entry.bound === EXACT) return { score: entry.score, bestUci: entry.bestUci };
-  if (entry.bound === LOWER && entry.score >= beta) return { score: entry.score, bestUci: entry.bestUci };
-  if (entry.bound === UPPER && entry.score <= alpha) return { score: entry.score, bestUci: entry.bestUci };
+  let score = entry.score;
+  if (score > MINMATE) score -= ply;
+  else if (score < -MINMATE) score += ply;
+  if (entry.bound === EXACT) return { score, bestUci: entry.bestUci };
+  if (entry.bound === LOWER && score >= beta) return { score, bestUci: entry.bestUci };
+  if (entry.bound === UPPER && score <= alpha) return { score, bestUci: entry.bestUci };
   return { score: null, bestUci: entry.bestUci };
 }
 
-function ttStore(key, depth, score, bound, bestUci) {
+function ttStore(key, depth, score, bound, bestUci, ply) {
   const existing = tt.get(key);
   if (existing && existing.depth > depth) return;
   if (tt.size >= TT_MAX && !existing) {
     const first = tt.keys().next().value;
     tt.delete(first);
   }
-  tt.set(key, { depth, score, bound, bestUci });
+  let stored = score;
+  if (stored > MINMATE) stored += ply;
+  else if (stored < -MINMATE) stored -= ply;
+  tt.set(key, { depth, score: stored, bound, bestUci });
 }
 
 function historyScore(uci) {
@@ -576,7 +583,7 @@ function negamax(pos, depth, alpha, beta, ply, deadline, killerTable) {
 
   const key = posKey(pos);
   let ttBestUci = null;
-  const probe = ttProbe(key, depth, alpha, beta);
+  const probe = ttProbe(key, depth, alpha, beta, ply);
   if (probe) {
     if (probe.score !== null) return probe.score;
     ttBestUci = probe.bestUci;
@@ -595,7 +602,7 @@ function negamax(pos, depth, alpha, beta, ply, deadline, killerTable) {
         recordKiller(killerTable, ply, uci);
         recordHistory(uci, depth);
       }
-      ttStore(key, depth, beta, LOWER, uci);
+      ttStore(key, depth, beta, LOWER, uci, ply);
       return beta;
     }
     if (score > alpha) {
@@ -603,7 +610,7 @@ function negamax(pos, depth, alpha, beta, ply, deadline, killerTable) {
       bestUci = uci;
     }
   }
-  ttStore(key, depth, alpha, alpha > origAlpha ? EXACT : UPPER, bestUci);
+  ttStore(key, depth, alpha, alpha > origAlpha ? EXACT : UPPER, bestUci, ply);
   return alpha;
 }
 

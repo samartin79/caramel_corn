@@ -18,7 +18,7 @@ Ranking by ELO-per-byte at our current strength level. Order in this list is the
 
 | # | Item | Type | Bytes | Status | Lozza source |
 |---|------|------|-------|--------|--------------|
-| 1 | Mate-score TT ply shift | correctness | ~50 | pending | src/tt.js:55-59,107-111 |
+| 1 | Mate-score TT ply shift | correctness | ~225 | SHIPPED (next) | src/tt.js:55-59,107-111 |
 | 6 | Staged good/even/bad captures | ordering | ~200 | SHIPPED dc83eab | src/iterate.js:205-263 |
 | 7 | Check extensions | strength | ~30 | pending | src/search.js:70-72,372-374 |
 | 8 | Reverse futility | pruning | ~50 | pending | src/search.js:252-253 |
@@ -43,6 +43,33 @@ Ranking by ELO-per-byte at our current strength level. Order in this list is the
 - **"Improving" heuristic** — adds complexity proportional to gain; defer until NMP/LMR are in
 
 ## Shipped commits (newest first)
+
+### (this commit) — fix: ply-shift mate scores in transposition table
+- **Date**: 2026-04-12
+- **Bytes**: agent.js +224 (27,305 → 27,529). Headroom 3,191 bytes.
+- **Tests**: npm test green; mate-in-1 probe (Qg7# from `6k1/8/6KQ/8/8/8/8/8 w - - 0 1`) found correctly via both stdin and makeMove paths.
+- **Why**: previously TT stored and returned raw mate scores. A mate found at ply P was cached as `MATE - P - k` (mate-in-k from this position). Probed at a different ply P', the same value was returned, so the bot believed mate was further or closer than it actually was. Symptom: "mate-in-N" announcements that drift, occasional preference for slower mates over faster ones when both transpose to the same TT entry.
+- **What**:
+  - New constant `MINMATE = MATE - 1000` separates centipawn scores from mate scores. Search depths never exceed 1000 plies, so this is a safe boundary.
+  - `ttStore(key, depth, score, bound, bestUci, ply)`:
+    - if `score > MINMATE`: stored = `score + ply` (positive mate condensed to "from-this-node" frame)
+    - else if `score < -MINMATE`: stored = `score - ply` (negative mate condensed)
+    - else: stored = `score` unchanged
+  - `ttProbe(key, depth, alpha, beta, ply)`:
+    - reads `entry.score`
+    - if `entry.score > MINMATE`: returned = `entry.score - ply` (positive mate re-expanded to "from-root-at-current-ply" frame)
+    - else if `entry.score < -MINMATE`: returned = `entry.score + ply`
+    - else: returned = `entry.score` unchanged
+    - **Critical**: bound checks (`>= beta`, `<= alpha`) use the unwrapped score, not `entry.score` directly. This was a subtle bug-magnet — using `entry.score` for the bound check would compare a "from-this-node" mate value against a "from-root" beta/alpha and either accept wrong cutoffs or miss valid ones.
+- **Mate-score normalization happens on both sides**: yes, store and probe both adjust. Adjustments are inverse (store +/-, probe -/+) so a round-trip with the same ply yields the original value, and a round-trip with different store/probe plies yields the correctly-rebased value.
+- **Call sites updated**: 3 in `negamax` (probe, LOWER store on cutoff, UPPER/EXACT store on return). All have `ply` in scope. Quiescence does not touch TT and needed no change.
+- **Risk**: medium. The bound-check ordering (unwrap before comparing) is the place this can silently break — verified by reading the function body. Existing tests verify legality and overall move selection but don't directly probe TT semantics; mate-in-1 sanity test confirms basic mate recognition still works.
+- **Timing effect**: negligible. 3-run median across the three probe positions:
+  - 45-Kiwipete: ~5.6s (was ~5.6s post-staged-captures) — unchanged
+  - 41 mid-game: ~3.8s (was ~3.8s) — unchanged
+  - 21 rook eg: ~3.7s (was ~3.7s) — unchanged
+  - Two extra integer comparisons per TT op are below measurement noise.
+- **Lozza reference**: src/tt.js:45-71 (ttPut), 75-124 (ttGet). Same algorithm, adapted to caramel_corn's Map-based TT instead of typed-array TT.
 
 ### dc83eab — feat: stage capture priority by victim-attacker value
 - **Date**: 2026-04-12
