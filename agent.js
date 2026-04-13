@@ -648,18 +648,29 @@ function negamax(pos, depth, alpha, beta, ply, deadline, killerTable) {
   let bestUci = ordered[0].uci;
   for (let i = 0; i < ordered.length; i++) {
     const { move, uci } = ordered[i];
-    if (i > 0 && ev !== null && alpha > -MINMATE && isQuiet(pos, move)) {
+    const quiet = isQuiet(pos, move);
+    if (i > 0 && ev !== null && alpha > -MINMATE && quiet) {
       if (depth <= 2 && i > 4 + depth * 4) continue;
       if (depth <= 4 && ev + 120 * depth < alpha) continue;
     }
-    const raw = negamax(applyMove(pos, move), depth - 1, -beta, -alpha, ply + 1, deadline, killerTable);
+    const child = applyMove(pos, move);
+    const r = (quiet && i >= 4 && depth >= 3 && !inCheck) ? (depth >= 6 && i >= 8 ? 2 : 1) : 0;
+    let raw = negamax(child, depth - 1 - r, -beta, -alpha, ply + 1, deadline, killerTable);
     if (raw === ABORT) {
       posStack.pop();
       return ABORT;
     }
-    const score = -raw;
+    let score = -raw;
+    if (r && score > alpha) {
+      raw = negamax(child, depth - 1, -beta, -alpha, ply + 1, deadline, killerTable);
+      if (raw === ABORT) {
+        posStack.pop();
+        return ABORT;
+      }
+      score = -raw;
+    }
     if (score >= beta) {
-      if (isQuiet(pos, move)) {
+      if (quiet) {
         recordKiller(killerTable, ply, uci);
         recordHistory(uci, depth);
       }
