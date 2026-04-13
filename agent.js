@@ -493,12 +493,16 @@ function orderMoves(pos, moves, killerUcis, ttBestUci) {
     const fromIdx = squareToIndex(move.from);
     const attacker = pos.board[fromIdx];
     const lower = attacker.toLowerCase();
+    const isEP = lower === 'p' && move.to === pos.enPassant;
+    const isCap = victim !== '.' || isEP;
     let priority = 0;
-    if (victim !== '.') {
-      priority = 10000 + PIECE_VALUES[victim.toLowerCase()] - PIECE_VALUES[lower] / 100;
-    }
-    if (lower === 'p' && move.to === pos.enPassant) {
+    if (isEP) {
       priority = 10000 + PIECE_VALUES.p;
+    } else if (victim !== '.') {
+      const victimVal = PIECE_VALUES[victim.toLowerCase()];
+      const attackerVal = PIECE_VALUES[lower];
+      const base = victimVal >= attackerVal ? 10000 : 3000;
+      priority = base + victimVal - attackerVal / 100;
     }
     if (move.promotion) {
       priority += 9000 + PIECE_VALUES[move.promotion];
@@ -506,7 +510,7 @@ function orderMoves(pos, moves, killerUcis, ttBestUci) {
     if (killers && killers.has(uci)) {
       priority += 5000;
     }
-    if (priority < 10000) {
+    if (!isCap && !move.promotion) {
       priority += historyScore(uci);
       priority += (PST[lower][pstIndex(attacker, toIdx)] - PST[lower][pstIndex(attacker, fromIdx)]) * 2;
       if (lower === 'k' && Math.abs(toIdx - fromIdx) === 2) priority += 120;
