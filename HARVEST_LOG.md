@@ -26,7 +26,7 @@ Ranking by ELO-per-byte at our current strength level. Order in this list is the
 | 10 | Late-move pruning | pruning | bundled | SHIPPED 34bc5f4 | src/search.js:339-340 |
 | 3 | History heuristic | strength | ~200 | SHIPPED 4faa70c | src/history.js |
 | 4 | Null-move pruning | strength | ~835 | SHIPPED 16506b9 | src/search.js:270-304 |
-| 5 | LMR | strength | ~150 | pending | src/search.js:74-77,376-378 |
+| 5 | LMR | strength | ~356 | SHIPPED d92394e | src/search.js:74-77,376-378 |
 | 11 | Mate-distance pruning | pruning | ~80 | pending | src/search.js:183-197 |
 | 12 | IIR | pruning | ~30 | pending | src/search.js:311,324-328 |
 | 13 | Delta pruning (qsearch) | pruning | ~40 | pending | src/qsearch.js:45 |
@@ -43,6 +43,80 @@ Ranking by ELO-per-byte at our current strength level. Order in this list is the
 - **"Improving" heuristic** — adds complexity proportional to gain; defer until NMP/LMR are in
 
 ## Shipped commits (newest first)
+
+### d92394e — feat: late-move reductions
+
+Harvest item #5. Quiet moves at depth ≥ 3 with index ≥ 4 (and not in check) get a depth reduction before the recursive search. If the reduced search returns score > alpha, re-search at full depth.
+
+- **Date**: 2026-04-13
+- **Bytes**: agent.js +356 (29,446 → 29,802). Headroom 918 bytes.
+- **Tests**: npm test green
+- **Tactical sanity**: mate-in-1 Qg7# (1144ms) and free-queen Nxb7 (791ms — *faster* than the pre-LMR 1248ms baseline).
+
+#### What landed
+
+```
+const quiet = isQuiet(pos, move);
+// pruning gates (FP/LMP) use cached `quiet` ...
+const child = applyMove(pos, move);
+const r = (quiet && i >= 4 && depth >= 3 && !inCheck) ? (depth >= 6 && i >= 8 ? 2 : 1) : 0;
+let raw = negamax(child, depth - 1 - r, -beta, -alpha, ply + 1, deadline, killerTable);
+// ... ABORT check ...
+let score = -raw;
+if (r && score > alpha) {
+  raw = negamax(child, depth - 1, -beta, -alpha, ply + 1, deadline, killerTable);
+  // ... ABORT check ...
+  score = -raw;
+}
+// ... cutoff/alpha update with cached `quiet` for killer/history ...
+```
+
+#### Reduction formula
+
+| condition | R |
+|-----------|---|
+| capture / promotion / inCheck / depth < 3 / first 4 moves | 0 |
+| late quiet at depth 3-5 | 1 |
+| late quiet at depth ≥ 6 with index ≥ 8 | 2 |
+
+Simpler than Lozza's `LMR_LOOKUP[depth*128 + idx]` table — chosen for byte efficiency. Pure LMR with re-search on fail-high, not full PVS.
+
+#### Bonus efficiency
+
+- `isQuiet(pos, move)` cached as `quiet` once per loop iteration. Replaces 2 inline calls (in pruning gates and cutoff branch). Net: ~0 byte change but saves CPU per iteration.
+- `applyMove(pos, move)` cached as `child`. Reduced search and re-search reuse the same child position instead of re-applying. Saves an applyMove call per re-searched move.
+
+#### Timing baseline (3-run median)
+
+| Position | Pre-LMR | Post-LMR |
+|----------|--------:|---------:|
+| 45-Kiwipete | 5.6s | 5.7s (stable, was at soft target) |
+| 41 Italian middlegame | 2.24s | 2.30s |
+| 21 K+R vs K endgame | 4.4s | 2.34s |
+
+The 21-rook-endgame drop suggests deeper search converges faster with LMR. The free-queen probe (1248ms → 791ms) confirms the same effect on tactical sequences. 45-case stop condition satisfied (within 0.1s of the 5.6s threshold).
+
+#### Risk notes
+
+- **Quiet check-giving moves can be reduced.** Lozza approximates "noisy" via MOVE_NOISY_MASK (captures + promotions). We use isQuiet() with the same effect. A quiet move that gives check at shallow depth could be reduced and miss tactics. Standard trade-off.
+- **No history-based reduction adjustment.** Lozza varies R by `improving`. We don't. Static reduction formula is simpler and ~50 bytes cheaper. May tune later if strength data suggests it matters.
+
+#### Ship discipline note
+
+Original LMR attempt landed at 30,572 bytes (148 byte runway). Stopped, reverted, did the castling reclaim (`01983e5`), then re-applied LMR cleanly with 918 byte runway. The pre-LMR reclaim was pure refactor (no semantic change).
+
+### 01983e5 — refactor: extract castling lookup tables in applyMove
+
+Pre-LMR byte-reclaim pass.
+
+- **Date**: 2026-04-13
+- **Bytes**: agent.js −770 (30,216 → 29,446). Headroom 504 → 1,274.
+- **Tests**: npm test green
+- **What**: replaces 20 hardcoded `squareToIndex('xN')` calls in `applyMove`'s castling-rook-move and castling-rights-tracking blocks with two module-level lookup tables:
+  - `CASTLE_ROOK[move.to]` → `[destIndex, sourceIndex]` for the rook half of castling (g1/c1/g8/c8)
+  - `CASTLE_RIGHT[squareIndex]` → rights letter to remove (Q/K/q/k)
+- **Why**: needed runway for LMR. The castling code was a known dense pocket of duplicated `squareToIndex` calls.
+- **Risk**: pure refactor. Same semantics, same edge cases. Tests + tactical probes confirm castling still applies correctly and rook-rights tracking still triggers on rook-from-corner and rook-captured-on-corner.
 
 ### f52283c — fix: avoid repeated live-game positions
 
