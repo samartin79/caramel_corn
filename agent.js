@@ -355,6 +355,18 @@ function moveToUci(move) {
   return `${move.from}${move.to}${move.promotion || ''}`;
 }
 
+function moveToReport(move) {
+  const reported = { from: move.from, to: move.to };
+  if (move.promotion) reported.promotion = move.promotion;
+  return reported;
+}
+
+function moveMatches(a, b) {
+  const ap = a.promotion || '';
+  const bp = b.promotion || '';
+  return a.from === b.from && a.to === b.to && ap === bp;
+}
+
 // Material piece values in centipawns.
 const PIECE_VALUES = { p: 100, n: 320, b: 330, r: 500, q: 900, k: 20000 };
 
@@ -439,9 +451,11 @@ function evaluate(pos) {
 }
 
 const MATE = 100000;
-const SOFT_MS = 60;
-const HARD_MS = 400;
 const ABORT = Symbol('abort');
+const LOCAL_TIMING = { softMs: 60, hardMs: 400 };
+const ARENA_BUFFER_MS = 1200;
+const ARENA_FLOOR_MS = 250;
+const ARENA_HARD_CAP_MS = 18000;
 
 // Transposition table: bounded, deterministic, depth-preferred replace.
 const TT_MAX = 50000;
@@ -678,7 +692,7 @@ const BOOK = new Map([
 ]);
 
 // Iterative deepening with soft/hard time control.
-function pickMove(pos) {
+function pickMove(pos, timing = LOCAL_TIMING) {
   const legal = legalMoves(pos);
   if (!legal.length) return null;
 
@@ -699,7 +713,9 @@ function pickMove(pos) {
   const killerTable = [];
 
   const start = Date.now();
-  const deadline = start + HARD_MS;
+  const hardMs = timing.hardMs;
+  const softMs = timing.softMs;
+  const deadline = start + hardMs;
 
   for (let depth = 1; ; depth++) {
     if (Date.now() >= deadline) break;
@@ -715,17 +731,84 @@ function pickMove(pos) {
     if (!result) break;
     bestMove = result.move;
     pvUci = result.uci;
-    if (Date.now() - start >= SOFT_MS) break;
+    if (Date.now() - start >= softMs) break;
   }
   return bestMove;
 }
 
-// The judge sends exactly one FEN on stdin. The agent prints exactly one UCI
-// move on stdout. If there are no legal moves, print 0000 as a safe placeholder.
-let fen = '';
-process.stdin.setEncoding('utf8');
-for await (const chunk of process.stdin) fen += chunk;
-fen = fen.trim();
-const pos = parseFen(fen);
-const move = pickMove(pos);
-process.stdout.write(`${move ? moveToUci(move) : '0000'}\n`);
+function arenaTiming(timeRemaining, legalCount) {
+  const raw = Number.isFinite(timeRemaining) ? timeRemaining : 20000;
+  const available = raw > ARENA_BUFFER_MS ? raw - ARENA_BUFFER_MS : Math.floor(raw * 0.6);
+  const hardMs = Math.max(ARENA_FLOOR_MS, Math.min(ARENA_HARD_CAP_MS, available));
+  let softRatio = 0.68;
+  if (legalCount <= 4) softRatio = 0.45;
+  else if (legalCount <= 10) softRatio = 0.58;
+  else if (legalCount >= 28) softRatio = 0.8;
+  const softMs = Math.max(ARENA_FLOOR_MS, Math.min(hardMs - 75, Math.floor(hardMs * softRatio)));
+  return { softMs, hardMs };
+}
+
+function liveMoves(board) {
+  if (!board || typeof board.moves !== 'function') return [];
+  try {
+    const verbose = board.moves({ verbose: true });
+    if (Array.isArray(verbose) && verbose.length) return verbose;
+  } catch {}
+  try {
+    const moves = board.moves();
+    return Array.isArray(moves) ? moves : [];
+  } catch {
+    return [];
+  }
+}
+
+function toFallbackReport(move) {
+  if (!move) return null;
+  if (typeof move === 'string') return move;
+  if (move && typeof move === 'object' && move.from && move.to) return moveToReport(move);
+  return null;
+}
+
+function findLiveMove(moves, move) {
+  return moves.find((candidate) => candidate && typeof candidate === 'object' && candidate.from && candidate.to && moveMatches(candidate, move)) || null;
+}
+
+function playFen(fen, timing = LOCAL_TIMING) {
+  const pos = parseFen(fen);
+  const move = pickMove(pos, timing);
+  return move ? moveToUci(move) : '0000';
+}
+
+function makeMove(board, timeRemaining, reportMove) {
+  const moves = liveMoves(board);
+  if (!moves.length || typeof reportMove !== 'function') return;
+
+  const fallback = toFallbackReport(moves[0]);
+  if (fallback) reportMove(fallback);
+
+  const fen = board && typeof board.fen === 'function' ? board.fen() : '';
+  if (!fen) return;
+
+  const pos = parseFen(fen);
+  const best = pickMove(pos, arenaTiming(timeRemaining, moves.length));
+  if (!best) return;
+
+  const matched = findLiveMove(moves, best);
+  if (matched && !moveMatches(matched, moves[0])) {
+    reportMove(moveToReport(matched));
+  }
+}
+
+// Local Node-only harness for fast smoke tests. The uploaded platform code uses
+// makeMove(board, timeRemaining, reportMove) instead of stdin/stdout.
+if (typeof process !== 'undefined' && process.stdin && process.stdout) {
+  let fen = '';
+  process.stdin.setEncoding('utf8');
+  process.stdin.on('data', (chunk) => {
+    fen += chunk;
+  });
+  process.stdin.on('end', () => {
+    process.stdout.write(`${playFen(fen.trim())}\n`);
+  });
+  process.stdin.resume();
+}
