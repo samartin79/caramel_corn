@@ -577,6 +577,8 @@ function quiescence(pos, alpha, beta, ply, deadline) {
   posStack.push(key);
   const ordered = orderMoves(pos, captures, null, null);
   for (const { move } of ordered) {
+    const victim = pos.board[squareToIndex(move.to)];
+    if (victim !== '.' && !move.promotion && alpha > -MINMATE && standPat + 200 + PIECE_VALUES[victim.toLowerCase()] < alpha) continue;
     const raw = quiescence(applyMove(pos, move), -beta, -alpha, ply + 1, deadline);
     if (raw === ABORT) {
       posStack.pop();
@@ -619,6 +621,8 @@ function negamax(pos, depth, alpha, beta, ply, deadline, killerTable) {
     if (probe.score !== null) return probe.score;
     ttBestUci = probe.bestUci;
   }
+
+  if (!ttBestUci && depth > 3) depth -= 1;
 
   const ev = (!inCheck && depth <= 6) ? evaluate(pos) * (pos.side === 'w' ? 1 : -1) : null;
   if (ev !== null && beta < MINMATE && ev - 100 * depth >= beta) return ev;
