@@ -440,6 +440,7 @@ const LOWER = 1;
 const UPPER = 2;
 const tt = new Map();
 const history = Object.create(null);
+let posStack = [];
 
 function posKey(pos) {
   let h = 2166136261;
@@ -594,6 +595,13 @@ function negamax(pos, depth, alpha, beta, ply, deadline, killerTable) {
   }
 
   const key = posKey(pos);
+
+  if (ply > 0) {
+    for (let i = posStack.length - 1; i >= 0; i--) {
+      if (posStack[i] === key) return 0;
+    }
+  }
+
   let ttBestUci = null;
   const probe = ttProbe(key, depth, alpha, beta, ply);
   if (probe) {
@@ -626,6 +634,7 @@ function negamax(pos, depth, alpha, beta, ply, deadline, killerTable) {
   const killerUcis = killerTable[ply] || null;
   const ordered = orderMoves(pos, legal, killerUcis, ttBestUci);
   let bestUci = ordered[0].uci;
+  posStack.push(key);
   for (let i = 0; i < ordered.length; i++) {
     const { move, uci } = ordered[i];
     if (i > 0 && ev !== null && alpha > -MINMATE && isQuiet(pos, move)) {
@@ -633,7 +642,10 @@ function negamax(pos, depth, alpha, beta, ply, deadline, killerTable) {
       if (depth <= 4 && ev + 120 * depth < alpha) continue;
     }
     const raw = negamax(applyMove(pos, move), depth - 1, -beta, -alpha, ply + 1, deadline, killerTable);
-    if (raw === ABORT) return ABORT;
+    if (raw === ABORT) {
+      posStack.pop();
+      return ABORT;
+    }
     const score = -raw;
     if (score >= beta) {
       if (isQuiet(pos, move)) {
@@ -641,6 +653,7 @@ function negamax(pos, depth, alpha, beta, ply, deadline, killerTable) {
         recordHistory(uci, depth);
       }
       ttStore(key, depth, beta, LOWER, uci, ply);
+      posStack.pop();
       return beta;
     }
     if (score > alpha) {
@@ -649,6 +662,7 @@ function negamax(pos, depth, alpha, beta, ply, deadline, killerTable) {
     }
   }
   ttStore(key, depth, alpha, alpha > origAlpha ? EXACT : UPPER, bestUci, ply);
+  posStack.pop();
   return alpha;
 }
 
@@ -725,6 +739,7 @@ function pickMove(pos, timing = LOCAL_TIMING) {
   const legal = legalMoves(pos);
   if (!legal.length) return null;
   ageHistory();
+  posStack = [posKey(pos)];
 
   const bk = bookKey(pos);
   const bookUci = BOOK.get(bk);
