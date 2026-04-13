@@ -609,6 +609,10 @@ function negamax(pos, depth, alpha, beta, ply, deadline, killerTable) {
 
   if (ply > 0 && repeated(key, posStack)) return -1;
 
+  if (MATE - ply < beta) beta = MATE - ply;
+  if (-MATE + ply > alpha) alpha = -MATE + ply;
+  if (alpha >= beta) return alpha;
+
   let ttBestUci = null;
   const probe = ttProbe(key, depth, alpha, beta, ply);
   if (probe) {
