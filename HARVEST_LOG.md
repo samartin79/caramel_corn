@@ -2,6 +2,46 @@
 
 Live tracking doc for porting Lozza ideas into caramel_corn. Updated as work lands.
 
+## Session Summary
+
+Lozza harvest pass: COMPLETE
+
+- 14 items attempted, 13 shipped, 1 deferred
+- Items shipped:
+  - #1 mate-score TT ply shift
+  - #2 repetition detection
+  - #3 history heuristic
+  - #4 NMP
+  - #5 LMR
+  - #6 staged captures
+  - #7 check extensions
+  - #8 reverse futility
+  - #9 futility
+  - #10 LMP
+  - #11 mate-distance pruning
+  - #12 IIR
+  - #13 delta pruning
+- Item deferred: #14 quickSee (byte overflow — ~620 bytes vs 556 bytes headroom)
+- Current agent.js: 30,164 bytes, 556 bytes headroom
+
+Additional non-harvest work this session:
+
+- Castling lookup table refactor (01983e5): saved 770 bytes, cleared runway for LMR
+- Book ep-normalization fix (3d45f43): fixed opening misses caused by en-passant FEN mismatch in book lookup
+- Predictive-stop retune (c40c724): addressed timing overshoot introduced by the pruning bundle (34bc5f4)
+
+## Strategic Pivot
+
+Two submission targets, two different engines:
+
+- **chessagents.ai** (1MB cap, 5s/move): full Lozza NNUE engine at `/mnt/llmstore/comp/the_carpenter_agent/agent.js` is the submission. Size and eval quality both fit within the looser cap.
+- **chessarena.dev** (30KB cap): caramel_corn remains the best option. All harvest items have landed. No further Lozza features fit within the byte budget without a larger reclaim pass.
+
+Experiments that did not ship:
+
+- **Dual eval (HCE on top of NNUE)**: failed. Per-node board scan for passed pawns destroyed NPS without a pawn hash cache in place. Not viable in this architecture without dedicated caching infrastructure.
+- **PeSTO eval on buttery_popcorn_v2**: showed correct endgame king behavior (king centralization in K+P endgames) but could not be measured in the simulator due to the fresh-process-per-ply limitation. Not pursued further.
+
 ## Sources
 
 - **Lozza reference fork**: `/mnt/llmstore/comp/the_carpenter` (read-only, no adaptation work happens there)
@@ -12,7 +52,7 @@ Live tracking doc for porting Lozza ideas into caramel_corn. Updated as work lan
 
 `chess-challenge1` validated artifact is preserved at tag `validated-2026-04-12-buttery_popcorn` on commit `638019c`.
 
-## Harvest plan (ranked)
+## Harvest plan (ranked) — COMPLETE
 
 Ranking by ELO-per-byte at our current strength level. Order in this list is the recommended ship order.
 
